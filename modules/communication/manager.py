@@ -18,6 +18,18 @@ class CommunicationManager:
         self._setup_routes()
         self._setup_socket_events()
 
+    def send_data(self, event_name, data_payload):
+        """
+        Permite a otros módulos (como Analytics) enviar eventos JSON
+        arbitrarios al frontend.
+        """
+        # Emitir vía SocketIO
+        self.socketio.emit(event_name, data_payload)
+
+        # Opcional: Imprimir en consola para debug ligero
+        # print(f"[COMMS SEND] {event_name}: {data_payload}")
+
+
     def _setup_routes(self):
         """Define las rutas HTTP (endpoints)"""
 
@@ -59,7 +71,7 @@ class CommunicationManager:
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
     def send_log(self, message):
-        """Método público para que otros módulos envíen logs a la web"""
+        """Métdo público para que otros módulos envíen logs a la web"""
         print(f"[COMMS LOG] {message}")
         self.socketio.emit('log_message', {'data': message})
 

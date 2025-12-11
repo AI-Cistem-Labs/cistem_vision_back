@@ -51,7 +51,7 @@ class VisionManager(threading.Thread):
         print("[VISION] Hilo de visión detenido.")
 
     def get_latest_frame(self):
-        """Método para que el Módulo de Comunicación obtenga el video"""
+        """Métdo para que el Módulo de Comunicación obtenga el video"""
         with self.lock:
             if self.current_frame is None:
                 return None
