@@ -9,7 +9,7 @@ import supervision as sv
 
 class FlowPersonsProcessor(BaseVisionProcessor):
     def __init__(self):
-        super().__init__(model_filename="NixitoS.pt", csv_prefix="flujo_personas")
+        super().__init__(model_filename="bestpersonas.pt", csv_prefix="flujo_personas")
         self.box_annotator = sv.RoundBoxAnnotator()
 
     def get_csv_headers(self):
