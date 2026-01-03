@@ -2,60 +2,72 @@
 import cv2
 import threading
 import time
-from .processors.yolo_counter import YoloCounterProcessor
+from .processors.registry import get_processor_class
 
 
 class VisionManager(threading.Thread):
-    def __init__(self, source=0, model_path="models/NixitoS.pt", csv_output="data/detecciones.csv"):
+    def __init__(self, source=0):
         super().__init__()
         self.source = source
         self.running = False
         self.current_frame = None
+        self.is_camera_connected = False
         self.lock = threading.Lock()
 
-        # Aquí instanciamos la estrategia (el algoritmo)
-        # En el futuro, esto podría cambiar dinámicamente según un comando
-        self.processor = YoloCounterProcessor(model_path, csv_output)
+        # El procesador activo (instancia de la clase elegida)
+        self.active_processor = None
+
+        # Iniciamos con un procesador por defecto (opcional)
+        self.change_processor("flow_persons_v1")
+
+    def change_processor(self, processor_id):
+        """Cambia el script lógico completo y reinicia el archivo CSV"""
+        processor_class = get_processor_class(processor_id)
+        if processor_class:
+            with self.lock:
+                # Instanciar el nuevo script (esto crea su propio CSV internamente)
+                self.active_processor = processor_class()
+            print(f"[VISION] Script cambiado a: {processor_id}")
+            return True
+        return False
 
     def run(self):
-        """Código que se ejecuta al llamar a start()"""
         self.running = True
-        print("[VISION] Iniciando captura de cámara...")
-
         cap = cv2.VideoCapture(self.source)
 
         while self.running:
             if not cap.isOpened():
-                print("[VISION] Cámara desconectada. Reintentando en 2s...")
+                self.is_camera_connected = False
                 time.sleep(2)
                 cap = cv2.VideoCapture(self.source)
                 continue
 
             success, frame = cap.read()
             if not success:
+                self.is_camera_connected = False
                 continue
 
-            # --- DELEGAR LA LÓGICA AL PROCESADOR ---
-            # Aquí ocurre la magia. No importa qué algoritmo sea,
-            # siempre devuelve frame procesado y datos.
-            processed_frame, data = self.processor.process_frame(frame)
+            self.is_camera_connected = True
 
-            # Actualizar el frame disponible para streaming (Thread-safe)
-            with self.lock:
-                self.current_frame = processed_frame
+            # Ejecutar la lógica del script activo
+            if self.active_processor:
+                # Cada script devuelve su frame anotado y los datos para su CSV
+                annotated_frame, csv_data = self.active_processor.process_frame(frame)
 
-            # (Opcional) Aquí podríamos poner los datos en una Cola (Queue)
-            # para que el Módulo de Comunicación los recoja sin leer el CSV.
+                # Guardar en su CSV específico
+                self.active_processor.write_to_csv(csv_data)
+
+                with self.lock:
+                    self.current_frame = annotated_frame
+            else:
+                with self.lock:
+                    self.current_frame = frame
 
         cap.release()
-        print("[VISION] Hilo de visión detenido.")
 
     def get_latest_frame(self):
-        """Métdo para que el Módulo de Comunicación obtenga el video"""
         with self.lock:
-            if self.current_frame is None:
-                return None
-            # Retornar codificado para streaming web inmediato
+            if self.current_frame is None: return None
             ret, buffer = cv2.imencode('.jpg', self.current_frame)
             return buffer.tobytes() if ret else None
 
