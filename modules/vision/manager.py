@@ -13,21 +13,18 @@ class VisionManager(threading.Thread):
         self.current_frame = None
         self.is_camera_connected = False
         self.lock = threading.Lock()
-
-        # El procesador activo (instancia de la clase elegida)
         self.active_processor = None
 
-        # Iniciamos con un procesador por defecto (opcional)
+        # Iniciar con un procesador por defecto
         self.change_processor("flow_persons_v1")
 
     def change_processor(self, processor_id):
-        """Cambia el script lógico completo y reinicia el archivo CSV"""
         processor_class = get_processor_class(processor_id)
         if processor_class:
             with self.lock:
-                # Instanciar el nuevo script (esto crea su propio CSV internamente)
+                # El nuevo procesador crea su propio CSV internamente
                 self.active_processor = processor_class()
-            print(f"[VISION] Script cambiado a: {processor_id}")
+            print(f"[VISION] 🔄 Cambiando a especialista: {processor_id}")
             return True
         return False
 
@@ -49,12 +46,9 @@ class VisionManager(threading.Thread):
 
             self.is_camera_connected = True
 
-            # Ejecutar la lógica del script activo
             if self.active_processor:
-                # Cada script devuelve su frame anotado y los datos para su CSV
+                # El especialista hace su trabajo y devuelve el frame anotado
                 annotated_frame, csv_data = self.active_processor.process_frame(frame)
-
-                # Guardar en su CSV específico
                 self.active_processor.write_to_csv(csv_data)
 
                 with self.lock:
