@@ -1,20 +1,16 @@
 import os
+from dotenv import load_dotenv
 
-# --- Configuración de Red ---
-PORT = 5000
-HOST = "0.0.0.0"
+load_dotenv()
 
-# --- Configuración de Archivos y Rutas ---
-# BASE_DIR nos ayuda a encontrar las carpetas sin importar desde dónde ejecutes el script
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, "models")
-DATA_DIR = os.path.join(BASE_DIR, "data")
-CSV_FILE = os.path.join(DATA_DIR, "detecciones_log.csv")
+DEVICE_NAME = os.getenv("DEVICE_NAME", "Jetson-Default")
+PORT = int(os.getenv("SERVER_PORT", 5000))
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", 0))
+MODELS_DIR = os.getenv("MODELS_DIR", "./models")
+DATA_DIR = os.getenv("DATA_DIR", "./data")
 
-# --- Configuración de Modelos ---
-DEFAULT_MODEL_NAME = "NixitoS.pt"
-MODEL_PATH = os.path.join(MODELS_DIR, DEFAULT_MODEL_NAME)
-
-# --- Configuración de Visión ---
-CAMERA_INDEX = 0  # Cambia a 1 si usas una cámara USB externa y no la integrada
-CONFIDENCE_THRESHOLD = 0.5
+# GPIO Pins
+PIN_LED_NET = int(os.getenv("PIN_LED_NET", 18))
+PIN_LED_PWR = int(os.getenv("PIN_LED_PWR", 23))
+PIN_LED_CAM = int(os.getenv("PIN_LED_CAM", 24))
+PIN_BTN_OFF = int(os.getenv("PIN_BTN_OFF", 25))
