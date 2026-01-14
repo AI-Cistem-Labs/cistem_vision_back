@@ -8,6 +8,7 @@ load_dotenv()
 
 class AuthSpecialist:
     def __init__(self):
+        # Carga las credenciales desde el archivo .env
         self.secret_key = os.getenv("JWT_SECRET", "cistem_secret_key_2026")
         self.admin_email = os.getenv("ADMIN_EMAIL", "admin@cistemlabs.ai")
         self.admin_password = os.getenv("ADMIN_PASSWORD", "secure_password")
@@ -20,18 +21,18 @@ class AuthSpecialist:
                 "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24),
                 "iat": datetime.datetime.utcnow()
             }
-            token = jwt.encode(payload, self.secret_key, algorithm="HS256")
-            return token
+            return jwt.encode(payload, self.secret_key, algorithm="HS256")
         return None
 
     def verify_token(self, token):
-        """Decodifica y valida la integridad del token"""
+        """Decodifica el token y verifica su validez"""
+        if not token:
+            return None
         try:
-            # Si el token viene con el prefijo 'Bearer ', lo removemos
+            # Maneja tokens que vienen con o sin el prefijo 'Bearer'
             if token.startswith("Bearer "):
                 token = token.split(" ")[1]
 
-            payload = jwt.decode(token, self.secret_key, algorithms=["HS256"])
-            return payload
+            return jwt.decode(token, self.secret_key, algorithms=["HS256"])
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             return None

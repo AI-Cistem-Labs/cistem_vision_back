@@ -8,20 +8,23 @@ auth_service = AuthSpecialist()
 
 @socketio.on('login')
 def handle_login(json_data):
-    """Atiende la petición de login de Postman"""
+    # Log para ver en la terminal de PyCharm
+    print(f"🔑 Intento de login recibido: {json_data}")
+
     email = json_data.get('email')
     password = json_data.get('password')
 
     token = auth_service.generate_token(email, password)
 
     if token:
-        # Formato exacto solicitado en Postman
+        print(f"✅ Login exitoso para {email}")
         socketio.emit('login_response', {
             "success": True,
             "token": token,
             "datetime": datetime.datetime.utcnow().isoformat() + "Z"
         }, room=request.sid)
     else:
+        print(f"❌ Login fallido para {email}")
         socketio.emit('login_response', {
             "success": False,
             "error": "Credenciales inválidas",
@@ -31,8 +34,8 @@ def handle_login(json_data):
 
 @socketio.on('profile')
 def handle_profile(data):
-    """Valida el token antes de entregar información sensible"""
-    token = data.get('token')  # O extraído de headers si usas middleware
+    print("👤 Petición de perfil recibida")
+    token = data.get('token')
     user_data = auth_service.verify_token(token)
 
     if user_data:
