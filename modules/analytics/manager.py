@@ -1,22 +1,38 @@
 # modules/analytics/manager.py
 import threading
 import time
-from .specialists import AlertsEngine
+import datetime
+
 
 class AnalyticsManager(threading.Thread):
-    def __init__(self, comms, vision):
+    def __init__(self, vision_module, storage_specialist, socketio_instance):  # <-- Recibimos socketio aquí
         super().__init__()
-        self.running = False
-        self.vision = vision
-        self.alerts_engine = AlertsEngine(comms)
+        self.vision = vision_module
+        self.storage = storage_specialist
+        self.socketio = socketio_instance  # <-- Lo guardamos en el objeto
+        self.running = True
 
     def run(self):
-        self.running = True
         while self.running:
-            # Pasa el procesador activo al motor de alertas para analizar su CSV
-            if self.vision.active_processor:
-                self.alerts_engine.analyze(self.vision.active_processor)
-            time.sleep(3) # Ciclo de análisis cada 3 seg
+            for cam_id, data in self.vision.cameras.items():
+                if data["active"]:
+                    count = data["metadata"].get("count", 0)
 
-    def stop(self):
-        self.running = False
+                    if count > 5:
+                        alert_data = {
+                            "type": "alert",
+                            "location_id": 1,
+                            "device_id": 101,
+                            "cam_id": cam_id,
+                            "date": datetime.datetime.utcnow().isoformat() + "Z",
+                            "level": "CRITICAL",
+                            "msg": f"Aglomeración detectada: {count} personas."
+                        }
+
+                        saved_alert = self.storage.save_event(cam_id, alert_data)
+
+                        # Usamos la instancia local, no la importada
+                        if self.socketio:
+                            self.socketio.emit('alert_event', saved_alert)
+
+            time.sleep(5)
