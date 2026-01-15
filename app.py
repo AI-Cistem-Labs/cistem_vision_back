@@ -1,64 +1,71 @@
 import os
-import datetime
 from flask import Flask
-from flask_socketio import SocketIO
 from flask_cors import CORS
 from dotenv import load_dotenv
+from extensions import socketio
 
-# 1. Configuración de entorno
+print("=" * 60)
+print("🚀 INICIANDO APLICACIÓN SOCKETIO")
+print("=" * 60)
+
 load_dotenv()
+print("✅ Variables de entorno cargadas")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("JWT_SECRET", "cistem_secret_2026")
+print(f"✅ Flask app creada con SECRET_KEY configurado")
+
 CORS(app)
+print("✅ CORS habilitado")
 
-# 2. Inicialización de SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# Vincular socketio a la app
+socketio.init_app(app)
+print("✅ SocketIO vinculado a la app")
+print(f"   - CORS: permitido desde cualquier origen")
+print(f"   - Async mode: threading")
+print(f"   - Logger: activado")
 
-# 3. Importar e inicializar módulos (Definición global)
-from modules.vision.manager import VisionManager
-from modules.storage.specialists.csv_specialist import CSVStorageSpecialist
-from modules.analytics.manager import AnalyticsManager
-
-# Definimos las variables pero no las iniciamos aún para evitar duplicidad
-vision_module = VisionManager(source=int(os.getenv("CAMERA_INDEX", 0)))
-storage = CSVStorageSpecialist()
-analytics = AnalyticsManager(vision_module, storage, socketio)
-
-# 4. Registrar Controladores
-# Importante: Aquí se registran los eventos @socketio.on
+# AHORA importar controladores (los decoradores ya funcionarán)
+print("\n📦 Cargando controladores...")
 import controllers.auth_controller
-import controllers.station_controller
-import controllers.camera_controller
-import controllers.video_controller
+
+print("✅ Controladores cargados\n")
 
 
-@socketio.on('stations')
-def handle_get_stations():
-    print("📩 Petición de estaciones recibida")
-    data = [
-        {
-            "location_id": 1,
-            "label": "Estación Insurgentes",
-            "devices": [{
-                "device_id": 101,
-                "label": "Jetson-Orin-01",
-                "cameras": vision_module.get_active_cameras_info()
-            }]
-        }
-    ]
-    socketio.emit('stations_response', {
-        "data": data,
-        "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-    })
+@socketio.on('connect')
+def handle_connect():
+    print("=" * 60)
+    print("🔌 NUEVA CONEXIÓN ESTABLECIDA")
+    print("=" * 60)
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print("=" * 60)
+    print("🔌 CLIENTE DESCONECTADO")
+    print("=" * 60)
+
+
+@app.route('/health')
+def health():
+    return {"status": "ok", "service": "Cistem Vision SocketIO"}, 200
 
 
 if __name__ == '__main__':
-    # Iniciamos los módulos de hardware solo en el proceso principal
-    print("📸 Iniciando módulos de Visión y Analítica...")
-    vision_module.start()
-    analytics.start()
-
     port = int(os.getenv("PORT", 5000))
-    print(f"🚀 Servidor Cistem Vision corriendo en http://localhost:{port}")
-    socketio.run(app, host='0.0.0.0', port=port)
+
+    print("=" * 60)
+    print(f"🌐 SERVIDOR INICIANDO EN http://0.0.0.0:{port}")
+    print("=" * 60)
+    print(f"📡 Esperando conexiones SocketIO...")
+    print(f"🔑 Evento registrado: 'login'")
+    print("=" * 60)
+    print()
+
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        allow_unsafe_werkzeug=True
+    )
