@@ -27,7 +27,7 @@ print(f"   - Logger: activado")
 
 # AHORA importar controladores (los decoradores ya funcionarán)
 print("\n📦 Cargando controladores...")
-import controllers.auth_controller
+import controllers
 
 print("✅ Controladores cargados\n")
 
