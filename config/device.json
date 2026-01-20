@@ -1,0 +1,36 @@
+{
+  "device": {
+    "device_id": 101,
+    "label": "Jetson-Orin-Lab-01",
+    "type": "jetson_orin",
+    "location_id": 1,
+    "location_label": "Laboratorio Principal"
+  },
+  "cameras": [
+    {
+      "cam_id": 1001,
+      "label": "Cámara Entrada",
+      "rtsp_url": "rtsp://192.168.1.100:554/stream1",
+      "position": [10, 20],
+      "status": true,
+      "available_processors": [1, 2, 3],
+      "active_processor": null
+    },
+    {
+      "cam_id": 1002,
+      "label": "Cámara Pasillo",
+      "rtsp_url": "rtsp://192.168.1.101:554/stream1",
+      "position": [50, 30],
+      "status": false,
+      "available_processors": [1, 2],
+      "active_processor": null
+    }
+  ],
+  "station": {
+    "location_id": 1,
+    "label": "Laboratorio Principal",
+    "description": "Centro de vigilancia inteligente - Zona A",
+    "mapImageUrl": "https://example.com/map_lab.png",
+    "isActive": true
+  }
+}
