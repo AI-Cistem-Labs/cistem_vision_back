@@ -1,5 +1,5 @@
 # modules/vision/processors/registry.py
-from .flow_persons import FlowPersonsProcessor
+from .person_counter_processor import FlowPersonsProcessor
 
 PROCESSOR_REGISTRY = {
     1: { # ID numérico según Postman

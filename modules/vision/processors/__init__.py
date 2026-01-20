@@ -2,7 +2,7 @@
 import os
 import importlib
 import inspect
-from .base import BaseVisionProcessor
+from .base_processor import BaseProcessor
 
 # Diccionario de procesadores disponibles
 AVAILABLE_PROCESSORS = {}
@@ -10,7 +10,7 @@ AVAILABLE_PROCESSORS = {}
 
 def register_processor(processor_class):
     """Registra un procesador en el sistema"""
-    if hasattr(processor_class, 'PROCESSOR_ID'):
+    if hasattr(processor_class, 'PROCESSOR_ID') and processor_class.PROCESSOR_ID is not None:
         AVAILABLE_PROCESSORS[processor_class.PROCESSOR_ID] = {
             'class': processor_class,
             'label': processor_class.PROCESSOR_LABEL,
@@ -25,15 +25,16 @@ def load_processors():
 
     for filename in os.listdir(processors_dir):
         if filename.endswith('_processor.py') and filename != 'base_processor.py':
-            module_name = filename[:-3]  # Quitar .py
+            module_name = filename[:-3]
 
             try:
-                # Importar módulo
                 module = importlib.import_module(f'modules.vision.processors.{module_name}')
 
-                # Buscar clases que heredan de BaseProcessor
                 for name, obj in inspect.getmembers(module, inspect.isclass):
-                    if issubclass(obj, BaseProcessor) and obj != BaseProcessor:
+                    if (issubclass(obj, BaseProcessor) and
+                            obj != BaseProcessor and
+                            hasattr(obj, 'PROCESSOR_ID') and
+                            obj.PROCESSOR_ID is not None):
                         register_processor(obj)
 
             except Exception as e:
@@ -41,12 +42,7 @@ def load_processors():
 
 
 def get_available_processors():
-    """
-    Retorna diccionario de procesadores disponibles
-
-    Returns:
-        dict: {processor_id: {'label': str, 'description': str, 'class': class}}
-    """
+    """Retorna diccionario de procesadores disponibles"""
     return {
         proc_id: {
             'label': info['label'],
@@ -63,7 +59,7 @@ def get_processor_class(processor_id):
     return None
 
 
-# Cargar procesadores al importar el módulo
+# Cargar procesadores al importar
 load_processors()
 
 __all__ = ['BaseProcessor', 'get_available_processors', 'get_processor_class', 'AVAILABLE_PROCESSORS']

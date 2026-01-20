@@ -1,6 +1,12 @@
-print("📂 Inicializando paquete de controladores...")
+# controllers/__init__.py
+"""
+Controladores SocketIO para Cistem Vision Backend
 
-# Importar todos los controladores
+Este módulo importa todos los controladores para registrar
+los eventos SocketIO automáticamente.
+"""
+
+# La simple importación registra los eventos @socketio.on()
 from . import auth_controller
 from . import station_controller
 from . import logs_controller
@@ -8,4 +14,11 @@ from . import alerts_controller
 from . import camera_controller
 from . import video_controller
 
-print("✅ Todos los controladores importados correctamente")
+__all__ = [
+    'auth_controller',
+    'station_controller',
+    'logs_controller',
+    'alerts_controller',
+    'camera_controller',
+    'video_controller'
+]

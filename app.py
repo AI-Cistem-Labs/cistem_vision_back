@@ -1,71 +1,124 @@
-import os
+# app.py
 from flask import Flask
 from flask_cors import CORS
-from dotenv import load_dotenv
 from extensions import socketio
+from dotenv import load_dotenv
+import os
 
-print("=" * 60)
-print("🚀 INICIANDO APLICACIÓN SOCKETIO")
-print("=" * 60)
-
+# Cargar variables de entorno
 load_dotenv()
-print("✅ Variables de entorno cargadas")
 
+# Crear aplicación Flask
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv("JWT_SECRET", "cistem_secret_2026")
-print(f"✅ Flask app creada con SECRET_KEY configurado")
+app.config['SECRET_KEY'] = os.getenv('JWT_SECRET', 'cistem_secret_key_2025')
 
-CORS(app)
-print("✅ CORS habilitado")
+# Configurar CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
-# Vincular socketio a la app
-socketio.init_app(app)
-print("✅ SocketIO vinculado a la app")
-print(f"   - CORS: permitido desde cualquier origen")
-print(f"   - Async mode: threading")
-print(f"   - Logger: activado")
+# Inicializar SocketIO con la app
+socketio.init_app(app, cors_allowed_origins="*", async_mode='threading')
 
-# AHORA importar controladores (los decoradores ya funcionarán)
-print("\n📦 Cargando controladores...")
-import controllers
+# Importar controladores (esto registra los eventos)
+print("📡 Registrando controladores SocketIO...")
+import controllers.auth_controller
+import controllers.station_controller
+import controllers.logs_controller
+import controllers.alerts_controller
+import controllers.camera_controller
+import controllers.video_controller
 
-print("✅ Controladores cargados\n")
+print("✅ Controladores registrados\n")
 
 
+# Evento de conexión
 @socketio.on('connect')
 def handle_connect():
-    print("=" * 60)
-    print("🔌 NUEVA CONEXIÓN ESTABLECIDA")
-    print("=" * 60)
+    print("🔌 Cliente conectado")
 
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print("=" * 60)
-    print("🔌 CLIENTE DESCONECTADO")
-    print("=" * 60)
+    print("🔌 Cliente desconectado")
+
+
+# Ruta de prueba HTTP
+@app.route('/')
+def index():
+    return {
+        'service': 'Cistem Vision Backend',
+        'version': '1.1',
+        'status': 'running',
+        'protocol': 'SocketIO'
+    }
 
 
 @app.route('/health')
 def health():
-    return {"status": "ok", "service": "Cistem Vision SocketIO"}, 200
+    """Endpoint de health check"""
+    from config.config_manager import device_config
+    from modules.vision.processors import get_available_processors
+
+    device_info = device_config.get_device_info()
+    processors = get_available_processors()
+
+    return {
+        'status': 'healthy',
+        'device': device_info,
+        'processors_count': len(processors),
+        'processors': list(processors.keys())
+    }
 
 
 if __name__ == '__main__':
-    port = int(os.getenv("PORT", 5000))
+    PORT = int(os.getenv('PORT', 5000))
+    DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
     print("=" * 60)
-    print(f"🌐 SERVIDOR INICIANDO EN http://0.0.0.0:{port}")
+    print("🎥 CISTEM VISION BACKEND v1.1")
     print("=" * 60)
-    print(f"📡 Esperando conexiones SocketIO...")
-    print(f"🔑 Evento registrado: 'login'")
+    print(f"🚀 Servidor iniciando en puerto {PORT}")
+    print(f"🐛 Modo debug: {DEBUG}")
+    print(f"📡 Protocolo: SocketIO")
     print("=" * 60)
     print()
 
+    # Cargar configuración del dispositivo
+    from config.config_manager import device_config
+
+    device_info = device_config.get_device_info()
+    location_info = device_config.get_location_info()
+    cameras = device_config.get_cameras()
+
+    print(f"📱 Dispositivo: {device_info['label']} (ID: {device_info['device_id']})")
+    print(f"📍 Ubicación: {location_info['label']}")
+    print(f"📹 Cámaras configuradas: {len(cameras)}")
+
+    # Mostrar procesadores disponibles
+    from modules.vision.processors import get_available_processors
+
+    processors = get_available_processors()
+    print(f"🤖 Procesadores disponibles: {len(processors)}")
+    for proc_id, proc_info in processors.items():
+        print(f"   - [{proc_id}] {proc_info['label']}")
+
+    print()
+    print("=" * 60)
+    print(f"✅ Servidor listo en http://localhost:{PORT}")
+    print(f"✅ WebSocket en ws://localhost:{PORT}")
+    print("=" * 60)
+    print()
+
+    # Iniciar servidor
     socketio.run(
         app,
         host='0.0.0.0',
-        port=port,
-        debug=False,
-        allow_unsafe_werkzeug=True
+        port=PORT,
+        debug=DEBUG,
+        use_reloader=False  # Evitar doble carga en modo debug
     )
