@@ -1,174 +1,185 @@
-import datetime
-import json
-from flask import request
+# controllers/auth_controller.py
+from flask_socketio import emit
 from extensions import socketio
+from datetime import datetime, timedelta
+import jwt
+import os
 
-print("=" * 60)
-print("🔐 AUTH CONTROLLER CARGADO")
-print("=" * 60)
+# Almacenamiento temporal de tokens (memoria)
+ACTIVE_TOKENS = {}
 
-# Datos de prueba
-VALID_CREDENTIALS = {
-    "admin@cistem.com": "admin123",
-    "admin@cistemlabs.ai": "secure_password",
-    "user@cistem.com": "user123"
+# Usuario demo para piloto
+DEMO_USER = {
+    "id_profile": 1,
+    "email": "admin@cistemlabs.ai",
+    "password": "secure_password",
+    "name": "Juan Pérez",
+    "role": "Administrador",
+    "photo_url": "https://ui-avatars.com/api/?name=Juan+Perez&size=200"
 }
 
-USERS_DB = {
-    "admin@cistemlabs.ai": {
-        "name": "Juan Pérez",
-        "photo_url": "https://example.com/photo.jpg",
-        "email": "admin@cistemlabs.ai"
-    },
-    "admin@cistem.com": {
-        "name": "Admin User",
-        "photo_url": "https://example.com/admin.jpg",
-        "email": "admin@cistem.com"
+JWT_SECRET = os.getenv('JWT_SECRET', 'cistem_secret_key_2025')
+JWT_EXPIRATION_HOURS = 24
+
+
+def generate_token(email):
+    """Genera token JWT válido por 24 horas"""
+    expiration = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+    payload = {
+        'email': email,
+        'exp': expiration
     }
-}
+    token = jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+    # Guardar en memoria
+    ACTIVE_TOKENS[token] = {
+        'email': email,
+        'created_at': datetime.utcnow(),
+        'expires_at': expiration
+    }
+
+    return token
 
 
-def generate_mock_token(email):
-    import hashlib
-    timestamp = datetime.datetime.utcnow().isoformat()
-    raw = f"{email}:{timestamp}:cistem_secret_2026"
-    return hashlib.sha256(raw.encode()).hexdigest()
-
-
-def validate_token(token):
-    """Valida el token JWT (versión simplificada)"""
-    if not token or len(token) < 20:
+def verify_token(token):
+    """Verifica si el token es válido"""
+    if not token:
         return None
-    # En producción, usa JWT real. Aquí simulamos extrayendo email del token
-    for email in VALID_CREDENTIALS.keys():
-        mock_token = generate_mock_token(email)
-        if token == mock_token:
-            return email
-    return None
+
+    # Verificar en memoria
+    if token not in ACTIVE_TOKENS:
+        return None
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        return payload
+    except jwt.ExpiredSignatureError:
+        # Token expirado, limpiar de memoria
+        if token in ACTIVE_TOKENS:
+            del ACTIVE_TOKENS[token]
+        return None
+    except jwt.InvalidTokenError:
+        return None
 
 
 @socketio.on('login')
 def handle_login(data):
-    print("\n" + "=" * 60)
-    print("🔑 EVENTO 'login' RECIBIDO")
-    print("=" * 60)
+    """
+    Evento: login
+    Autentica usuario y genera token JWT
+    """
+    try:
+        email = data.get('email')
+        password = data.get('password')
 
-    print(f"📦 Tipo de datos: {type(data)}")
-    print(f"📦 Datos raw: {data}")
-
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-            print("✅ JSON parseado correctamente")
-        except json.JSONDecodeError as e:
-            print(f"❌ Error parseando JSON: {e}")
-            socketio.emit('login_response', {
-                "success": False,
-                "error": "JSON inválido"
-            }, room=request.sid)
+        if not email or not password:
+            emit('login_response', {
+                'success': False,
+                'error': 'Email y password son requeridos',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
             return
 
-    email = data.get('email', '').strip()
-    password = data.get('password', '').strip()
+        # Validar credenciales (demo)
+        if email == DEMO_USER['email'] and password == DEMO_USER['password']:
+            token = generate_token(email)
 
-    print(f"📧 Email: {email}")
-    print(f"🔒 Password: {'*' * len(password)}")
+            emit('login_response', {
+                'success': True,
+                'token': token,
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
 
-    if not email or not password:
-        print("❌ Credenciales vacías")
-        response = {
-            "success": False,
-            "error": "Email y password son requeridos",
-            "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-        }
-        print(f"📤 Emitiendo 'login_response': {response}")
-        socketio.emit('login_response', response, room=request.sid)
-        return
+            print(f"✅ Login exitoso: {email}")
+        else:
+            emit('login_response', {
+                'success': False,
+                'error': 'Credenciales inválidas',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
 
-    if email in VALID_CREDENTIALS and VALID_CREDENTIALS[email] == password:
-        token = generate_mock_token(email)
-        print(f"✅ LOGIN EXITOSO para {email}")
+            print(f"❌ Login fallido: {email}")
 
-        response = {
-            "success": True,
-            "token": token,
-            "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-        }
-
-        print(f"📤 Emitiendo 'login_response' exitoso")
-        print(f"🎫 Token generado: {token[:20]}...")
-
-    else:
-        print(f"❌ LOGIN FALLIDO para {email}")
-
-        response = {
-            "success": False,
-            "error": "Credenciales inválidas",
-            "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-        }
-
-        print(f"📤 Emitiendo 'login_response' de error")
-
-    socketio.emit('login_response', response, room=request.sid)
-    print("=" * 60)
-    print()
+    except Exception as e:
+        print(f"❌ Error en login: {str(e)}")
+        emit('login_response', {
+            'success': False,
+            'error': 'Error interno del servidor',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
 
 
 @socketio.on('get_profile')
 def handle_get_profile(data):
-    print("\n" + "=" * 60)
-    print("👤 EVENTO 'get_profile' RECIBIDO")
-    print("=" * 60)
+    """
+    Evento: get_profile
+    Obtiene información del perfil del usuario autenticado
+    """
+    try:
+        # Extraer token del header Authorization
+        token = data.get('token')
 
-    print(f"📦 Datos recibidos: {data}")
+        if not token:
+            emit('get_profile_response', {
+                'error': 'Token de autorización no proporcionado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
 
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except:
-            pass
+        # Verificar token
+        payload = verify_token(token)
 
-    # Extraer token del campo 'token' o 'authorization'
-    token = data.get('token') or data.get('authorization', '')
+        if not payload:
+            emit('get_profile_response', {
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
 
-    # Limpiar el Bearer si viene
-    if token.startswith('Bearer '):
-        token = token.replace('Bearer ', '')
+        # Retornar perfil completo
+        emit('get_profile_response', {
+            'id_profile': DEMO_USER['id_profile'],
+            'name': DEMO_USER['name'],
+            'email': DEMO_USER['email'],
+            'role': DEMO_USER['role'],
+            'photo_url': DEMO_USER['photo_url'],
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
 
-    print(f"🎫 Token recibido: {token[:20] if token else 'NONE'}...")
+        print(f"✅ Perfil consultado: {payload['email']}")
 
-    if not token:
-        print("❌ Token faltante")
-        socketio.emit('profile_response', {
-            "error": "Token de autorización no proporcionado",
-            "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-        }, room=request.sid)
-        return
-
-    email = validate_token(token)
-
-    if not email or email not in USERS_DB:
-        print("❌ Token inválido o usuario no encontrado")
-        socketio.emit('profile_response', {
-            "error": "Token inválido o expirado",
-            "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-        }, room=request.sid)
-        return
-
-    user_data = USERS_DB[email]
-    print(f"✅ Perfil encontrado para {email}")
-
-    response = {
-        "name": user_data["name"],
-        "photo_url": user_data["photo_url"],
-        "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-    }
-
-    print(f"📤 Emitiendo 'profile_response'")
-    socketio.emit('profile_response', response, room=request.sid)
-    print("=" * 60)
-    print()
+    except Exception as e:
+        print(f"❌ Error en get_profile: {str(e)}")
+        emit('get_profile_response', {
+            'error': 'Error interno del servidor',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
 
 
-print("✅ Handlers registrados: 'login', 'get_profile'")
-print("=" * 60)
+@socketio.on('logout')
+def handle_logout(data):
+    """
+    Evento: logout
+    Invalida el token del usuario
+    """
+    try:
+        token = data.get('token')
+
+        if token and token in ACTIVE_TOKENS:
+            email = ACTIVE_TOKENS[token]['email']
+            del ACTIVE_TOKENS[token]
+            print(f"✅ Logout exitoso: {email}")
+
+        emit('logout_response', {
+            'success': True,
+            'message': 'Sesión cerrada correctamente',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
+
+    except Exception as e:
+        print(f"❌ Error en logout: {str(e)}")
+        emit('logout_response', {
+            'success': False,
+            'error': 'Error al cerrar sesión',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })

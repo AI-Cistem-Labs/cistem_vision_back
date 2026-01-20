@@ -1,161 +1,93 @@
-import datetime
-import json
-from flask import request
+# controllers/station_controller.py
+from flask_socketio import emit
 from extensions import socketio
-
-print("=" * 60)
-print("🏢 STATION CONTROLLER CARGADO")
-print("=" * 60)
-
-# Datos mock de estaciones
-STATIONS_DATA = [
-    {
-        "location_id": 1,
-        "label": "Estación Insurgentes",
-        "devices": [
-            {
-                "device_id": 101,
-                "label": "Jetson-Nano-01",
-                "cameras": [
-                    {
-                        "cam_id": 1001,
-                        "label": "Cámara Acceso Principal",
-                        "status": True,
-                        "processors": [
-                            {
-                                "processor_id": 1,
-                                "label": "Detección de Intrusos",
-                                "description": "Monitorea áreas restringidas y detecta personas no autorizadas",
-                                "status": False
-                            },
-                            {
-                                "processor_id": 2,
-                                "label": "Conteo de Personas",
-                                "description": "Análisis de flujo peatonal en tiempo real",
-                                "status": True
-                            },
-                            {
-                                "processor_id": 3,
-                                "label": "Detección de Objetos Abandonados",
-                                "description": "Identifica objetos dejados en área monitoreada",
-                                "status": False
-                            }
-                        ],
-                        "logs": [
-                            {
-                                "type": "log",
-                                "date": "2026-01-09T14:25:00.000Z",
-                                "msg": "Cámara iniciada correctamente",
-                                "label": "INFO"
-                            },
-                            {
-                                "type": "log",
-                                "date": "2026-01-09T14:20:00.000Z",
-                                "msg": "Pérdida momentánea de frames detectada",
-                                "label": "WARNING"
-                            }
-                        ]
-                    },
-                    {
-                        "cam_id": 1002,
-                        "label": "Cámara Pasillo Norte",
-                        "status": False,
-                        "processors": [
-                            {
-                                "processor_id": 1,
-                                "label": "Detección de Intrusos",
-                                "description": "Monitorea áreas restringidas y detecta personas no autorizadas",
-                                "status": False
-                            }
-                        ],
-                        "logs": []
-                    }
-                ]
-            }
-        ]
-    },
-    {
-        "location_id": 2,
-        "label": "Estación Zócalo",
-        "devices": [
-            {
-                "device_id": 201,
-                "label": "Jetson-Orin-01",
-                "cameras": [
-                    {
-                        "cam_id": 2001,
-                        "label": "Cámara Andén 1",
-                        "status": True,
-                        "processors": [
-                            {
-                                "processor_id": 2,
-                                "label": "Conteo de Personas",
-                                "description": "Análisis de flujo peatonal en tiempo real",
-                                "status": True
-                            }
-                        ],
-                        "logs": [
-                            {
-                                "type": "log",
-                                "date": "2026-01-09T14:28:00.000Z",
-                                "msg": "Procesador de IA actualizado correctamente",
-                                "label": "INFO"
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
-]
-
-
-def validate_token(token):
-    """Valida el token (versión simplificada)"""
-    return token and len(token) > 20
+from config.config_manager import device_config
+from modules.vision.processors import get_available_processors
+from modules.analytics.specialists.system_logger import system_logger
+from datetime import datetime
+from controllers.auth_controller import verify_token
 
 
 @socketio.on('get_stations')
 def handle_get_stations(data):
-    print("\n" + "=" * 60)
-    print("🏢 EVENTO 'get_stations' RECIBIDO")
-    print("=" * 60)
+    """
+    Evento: get_stations
+    Retorna la jerarquía completa: location → device → cameras → processors
+    """
+    try:
+        # Verificar autenticación
+        token = data.get('token')
+        if not verify_token(token):
+            emit('get_stations_response', {
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
 
-    print(f"📦 Datos recibidos: {data}")
+        # Obtener información del dispositivo
+        device_info = device_config.get_device_info()
+        location_info = device_config.get_location_info()
+        cameras = device_config.get_cameras()
 
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except:
-            pass
+        # Obtener procesadores disponibles
+        available_processors = get_available_processors()
 
-    # Validar token
-    token = data.get('token') or data.get('authorization', '')
-    if token.startswith('Bearer '):
-        token = token.replace('Bearer ', '')
+        # Construir estructura de cámaras con procesadores y logs
+        cameras_data = []
+        for cam in cameras:
+            cam_id = cam['cam_id']
 
-    print(f"🎫 Token: {token[:20] if token else 'NONE'}...")
+            # Obtener procesadores para esta cámara
+            processors_list = []
+            for proc_id in cam.get('available_processors', []):
+                proc_info = available_processors.get(proc_id)
+                if proc_info:
+                    processors_list.append({
+                        'processor_id': proc_id,
+                        'label': proc_info['label'],
+                        'description': proc_info['description'],
+                        'status': cam.get('active_processor') == proc_id
+                    })
 
-    if not validate_token(token):
-        print("❌ Token inválido o faltante")
-        socketio.emit('stations_response', {
-            "error": "Token inválido o expirado",
-            "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-        }, room=request.sid)
-        return
+            # Obtener últimos logs de esta cámara
+            recent_logs = system_logger.get_logs(cam_id, limit=5)
 
-    print(f"✅ Enviando {len(STATIONS_DATA)} estaciones")
+            cameras_data.append({
+                'cam_id': cam['cam_id'],
+                'label': cam['label'],
+                'status': cam['status'],
+                'position': cam['position'],
+                'processors': processors_list,
+                'logs': recent_logs
+            })
 
-    response = {
-        "data": STATIONS_DATA,
-        "datetime": datetime.datetime.utcnow().isoformat() + "Z"
-    }
+        # Construir respuesta jerárquica
+        response = {
+            'data': [
+                {
+                    'location_id': location_info['location_id'],
+                    'label': location_info['label'],
+                    'description': location_info['description'],
+                    'mapImageUrl': location_info['mapImageUrl'],
+                    'isActive': location_info['isActive'],
+                    'devices': [
+                        {
+                            'device_id': device_info['device_id'],
+                            'label': device_info['label'],
+                            'cameras': cameras_data
+                        }
+                    ]
+                }
+            ],
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        }
 
-    print(f"📤 Emitiendo 'stations_response'")
-    socketio.emit('stations_response', response, room=request.sid)
-    print("=" * 60)
-    print()
+        emit('get_stations_response', response)
+        print(f"✅ Estaciones enviadas: {len(cameras_data)} cámaras")
 
-
-print("✅ Handler registrado: 'get_stations'")
-print("=" * 60)
+    except Exception as e:
+        print(f"❌ Error en get_stations: {str(e)}")
+        emit('get_stations_response', {
+            'error': 'Error al obtener información de estaciones',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
