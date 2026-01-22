@@ -1,3 +1,4 @@
+# modules/analytics/specialists/system_logger.py
 from datetime import datetime
 from extensions import socketio
 from config.config_manager import device_config
@@ -26,6 +27,18 @@ class SystemLogger:
             self.logs_buffer[cam_id] = deque(maxlen=50)
         return self.logs_buffer[cam_id]
 
+    def _emit_to_frontend(self, event, data):
+        """
+        Emite evento al frontend solo si socketio está conectado
+        """
+        try:
+            # Verificar que socketio tiene servidor activo
+            if socketio.server is not None:
+                socketio.emit(event, data)
+        except Exception as e:
+            # En modo test o sin servidor, solo ignorar
+            pass
+
     def log(self, cam_id, message, level="INFO"):
         """
         Registra un log y lo envía al frontend
@@ -51,8 +64,8 @@ class SystemLogger:
         # Guardar en buffer
         self._get_camera_buffer(cam_id).append(log_entry)
 
-        # Emitir al frontend via SocketIO
-        socketio.emit('new_log', log_entry)
+        # Emitir al frontend via SocketIO (solo si está disponible)
+        self._emit_to_frontend('new_log', log_entry)
 
         # Log en consola
         icon = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌"}.get(level, "📝")

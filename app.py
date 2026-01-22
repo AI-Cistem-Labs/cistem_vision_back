@@ -120,5 +120,6 @@ if __name__ == '__main__':
         host='0.0.0.0',
         port=PORT,
         debug=DEBUG,
-        use_reloader=False  # Evitar doble carga en modo debug
+        use_reloader=False,
+        allow_unsafe_werkzeug=True  # ← AGREGAR ESTA LÍNEA
     )

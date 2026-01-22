@@ -12,12 +12,18 @@
   "cameras": [
     {
       "cam_id": 1001,
-      "label": "Cámara Entrada",
-      "rtsp_url": "rtsp://admin:password@192.168.1.100:554/stream1",
-      "position": [10, 20],
-      "status": false,
-      "available_processors": [1, 2],
-      "active_processor": null
+      "label": "C\u00e1mara Entrada",
+      "rtsp_url": "rtsp://admin:admin@192.168.1.60/v_enc_000",
+      "position": [
+        50,
+        100
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 1
     }
   ]
 }

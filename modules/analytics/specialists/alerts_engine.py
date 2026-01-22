@@ -1,3 +1,4 @@
+# modules/analytics/specialists/alerts_engine.py
 from datetime import datetime
 from extensions import socketio
 from config.config_manager import device_config
@@ -26,6 +27,18 @@ class AlertsEngine:
         if cam_id not in self.alerts_buffer:
             self.alerts_buffer[cam_id] = deque(maxlen=100)
         return self.alerts_buffer[cam_id]
+
+    def _emit_to_frontend(self, event, data):
+        """
+        Emite evento al frontend solo si socketio está conectado
+        """
+        try:
+            # Verificar que socketio tiene servidor activo
+            if socketio.server is not None:
+                socketio.emit(event, data)
+        except Exception as e:
+            # En modo test o sin servidor, solo ignorar
+            pass
 
     def create_alert(self, cam_id, message, level="PRECAUCION", context=None):
         """
@@ -57,8 +70,8 @@ class AlertsEngine:
         # Guardar en buffer
         self._get_alerts_buffer(cam_id).append(alert)
 
-        # Emitir al frontend INMEDIATAMENTE
-        socketio.emit('new_alert', alert)
+        # Emitir al frontend INMEDIATAMENTE (solo si está disponible)
+        self._emit_to_frontend('new_alert', alert)
 
         # Log en consola
         icon = "🚨" if level == "CRITICAL" else "⚠️"
