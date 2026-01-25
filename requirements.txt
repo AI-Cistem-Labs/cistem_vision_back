@@ -1,10 +1,20 @@
+# --- Framework Web y Sockets ---
 Flask==3.0.0
-Flask-SocketIO==5.3.5
+Flask-SocketIO==5.3.6
 Flask-CORS==4.0.0
-python-socketio==5.10.0
-python-dotenv==1.0.0
-PyJWT==2.8.0
-opencv-python==4.8.1.78
-numpy==1.24.3
-python-engineio==4.8.0
+python-dotenv==1.0.1
 eventlet==0.33.3
+
+# --- Seguridad y Autenticación ---
+PyJWT==2.8.0
+
+# --- Procesamiento de Datos ---
+pandas==2.2.0
+numpy==1.24.4
+
+# --- Visión por Computadora e IA ---
+# Nota: En Jetson, se recomienda instalar Ultralytics y OpenCV con cuidado (ver instrucciones abajo)
+ultralytics==8.1.0
+opencv-python==4.9.0.80
+pillow==10.2.0
+requests==2.31.0

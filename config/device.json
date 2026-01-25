@@ -13,7 +13,7 @@
     {
       "cam_id": 1001,
       "label": "C\u00e1mara Entrada",
-      "rtsp_url": "rtsp://admin:admin@192.168.1.60/v_enc_000",
+      "rtsp_url": "rtsp://admin123:admin123@192.168.1.214/stream1",
       "position": [
         50,
         100

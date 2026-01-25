@@ -217,3 +217,77 @@ def handle_disconnect():
         if client_id in active_streams[cam_id]:
             active_streams[cam_id][client_id]['stop'] = True
             print(f"🔌 Cliente {client_id} desconectado - Stream de cámara {cam_id} detenido")
+
+
+# ============================================================
+# STREAMING VÍA MEDIAMTX (HLS/WebRTC)
+# ============================================================
+
+import os
+
+# Configuración de Tailscale y MediaMTX
+TAILSCALE_IP = os.getenv('TAILSCALE_IP', '100.73.141.61')  # ⬅️ CAMBIA ESTA IP
+MEDIAMTX_HLS_PORT = os.getenv('MEDIAMTX_HLS_PORT', '8888')
+MEDIAMTX_WEBRTC_PORT = os.getenv('MEDIAMTX_WEBRTC_PORT', '8889')
+MEDIAMTX_RTSP_PORT = os.getenv('MEDIAMTX_RTSP_PORT', '8554')
+
+
+@socketio.on('get_camera_stream_url')
+def handle_get_camera_stream_url(data):
+    """
+    Evento: get_camera_stream_url
+    Retorna las URLs de streaming MediaMTX para una cámara específica
+    """
+    try:
+        # Verificar autenticación
+        token = data.get('token')
+        if not verify_token(token):
+            emit('get_camera_stream_url_response', {
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Validar parámetros
+        location_id = data.get('location_id')
+        device_id = data.get('device_id')
+        cam_id = data.get('cam_id')
+
+        if not all([location_id, device_id, cam_id]):
+            emit('get_camera_stream_url_response', {
+                'error': 'Los parámetros location_id, device_id y cam_id son requeridos',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Verificar que la cámara existe
+        camera = device_config.get_camera(cam_id)
+        if not camera:
+            emit('get_camera_stream_url_response', {
+                'error': 'Cámara no encontrada',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Construir URLs de streaming vía MediaMTX
+        stream_urls = {
+            'hls': f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}/index.m3u8',
+            'webrtc': f'http://{TAILSCALE_IP}:{MEDIAMTX_WEBRTC_PORT}/cam_{cam_id}',
+            'rtsp': f'rtsp://{TAILSCALE_IP}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}'
+        }
+
+        emit('get_camera_stream_url_response', {
+            'success': True,
+            'cam_id': cam_id,
+            'streams': stream_urls,
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
+
+        print(f"✅ URLs de streaming MediaMTX enviadas para cámara {cam_id}")
+
+    except Exception as e:
+        print(f"❌ Error en get_camera_stream_url: {str(e)}")
+        emit('get_camera_stream_url_response', {
+            'error': 'Error al obtener URLs de streaming',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
