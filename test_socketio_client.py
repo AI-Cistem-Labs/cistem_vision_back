@@ -129,7 +129,7 @@ def main():
     print("-" * 70)
     sio.emit('login', {
         'email': 'admin@cistemlabs.ai',
-        'password': 'secure_password'
+        'password': '123456'
     })
     time.sleep(2)
 

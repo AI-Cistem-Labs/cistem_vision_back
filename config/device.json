@@ -9,18 +9,18 @@
     "mapImageUrl": "http://100.73.141.61:5000/static/maps/mapanix.jpeg",
     "isActive": true,
     "mapDimensions": {
-      "width": 25,
-      "height": 35
+      "width": 1920,
+      "height": 1080
     }
   },
   "cameras": [
     {
       "cam_id": 1001,
-      "label": "C\u00e1mara Entrada Principal",
+      "label": "Tapo C100 - Entrada Principal",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
       "position": [
-        25,
-        35
+        22.471540178571427,
+        35.2359693877551
       ],
       "status": true,
       "available_processors": [
@@ -31,8 +31,8 @@
     },
     {
       "cam_id": 1002,
-      "label": "C\u00e1mara Pasillo Norte",
-      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
+      "label": "Tapo C310 - Pasillo Norte",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1002",
       "position": [
         90,
         70
@@ -42,7 +42,37 @@
         1,
         2
       ],
-      "active_processor": null
+      "active_processor": 1
+    },
+    {
+      "cam_id": 1003,
+      "label": "Tapo C210 - Salida Emergencia",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1003",
+      "position": [
+        40,
+        50
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 1
+    },
+    {
+      "cam_id": 1004,
+      "label": "Tapo C100 - Salida",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1004",
+      "position": [
+        60,
+        70
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 2
     }
   ]
 }

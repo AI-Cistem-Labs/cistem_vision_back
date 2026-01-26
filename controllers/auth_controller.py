@@ -12,7 +12,7 @@ ACTIVE_TOKENS = {}
 DEMO_USER = {
     "id_profile": 1,
     "email": "admin@cistemlabs.ai",
-    "password": "secure_password",
+    "password": "123456",
     "name": "Juan Pérez",
     "role": "Administrador",
     "photo_url": "https://ui-avatars.com/api/?name=Juan+Perez&size=200"
