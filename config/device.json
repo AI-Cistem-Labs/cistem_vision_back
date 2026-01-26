@@ -17,7 +17,7 @@
     {
       "cam_id": 1001,
       "label": "C\u00e1mara Entrada Principal",
-      "rtsp_url": "rtsp://admin123:admin123@192.168.1.214/stream1",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
       "position": [
         25,
         35
@@ -32,7 +32,7 @@
     {
       "cam_id": 1002,
       "label": "C\u00e1mara Pasillo Norte",
-      "rtsp_url": "rtsp://admin123:admin123@192.168.1.228/stream1",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
       "position": [
         90,
         70

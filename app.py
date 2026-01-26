@@ -37,8 +37,7 @@ import controllers.station_controller
 import controllers.logs_controller
 import controllers.alerts_controller
 import controllers.camera_controller
-import controllers.video_controller
-
+import controllers.video_controller 
 print("✅ Controladores registrados\n")
 
 
