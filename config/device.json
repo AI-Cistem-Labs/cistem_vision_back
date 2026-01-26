@@ -6,17 +6,21 @@
     "location_id": 1,
     "label": "Laboratorio Principal",
     "description": "Centro de vigilancia - Zona A",
-    "mapImageUrl": "",
-    "isActive": true
+    "mapImageUrl": "http://100.73.141.61:5000/static/maps/mapanix.jpeg",
+    "isActive": true,
+    "mapDimensions": {
+      "width": 25,
+      "height": 35
+    }
   },
   "cameras": [
     {
       "cam_id": 1001,
-      "label": "C\u00e1mara Entrada",
+      "label": "C\u00e1mara Entrada Principal",
       "rtsp_url": "rtsp://admin123:admin123@192.168.1.214/stream1",
       "position": [
-        50,
-        100
+        25,
+        35
       ],
       "status": true,
       "available_processors": [
@@ -24,6 +28,21 @@
         2
       ],
       "active_processor": 1
+    },
+    {
+      "cam_id": 1002,
+      "label": "C\u00e1mara Pasillo Norte",
+      "rtsp_url": "rtsp://admin123:admin123@192.168.1.228/stream1",
+      "position": [
+        90,
+        70
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": null
     }
   ]
 }
