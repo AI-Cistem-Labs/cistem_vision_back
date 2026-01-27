@@ -9,6 +9,7 @@ import os
 class PersonCounterProcessor(BaseProcessor):
     """
     Procesador que cuenta personas en el frame
+    (Versión simplificada para piloto - usa detección de movimiento)
     """
 
     PROCESSOR_ID = 1
@@ -41,8 +42,13 @@ class PersonCounterProcessor(BaseProcessor):
 
     def process_frame(self, frame):
         """
-        Procesa frame y cuenta personas
-        IMPORTANTE: Dibuja las detecciones en el frame
+        Procesa frame y cuenta personas (versión simplificada)
+
+        Args:
+            frame: Frame BGR de OpenCV
+
+        Returns:
+            Frame con anotaciones visuales
         """
         self.increment_frame_count()
         processed_frame = frame.copy()
@@ -65,47 +71,19 @@ class PersonCounterProcessor(BaseProcessor):
             if area > 1000:  # Área mínima para considerar como persona
                 person_count += 1
 
-                # ============================================================
-                # DIBUJAR BOUNDING BOX ALREDEDOR DE LA PERSONA
-                # ============================================================
+                # Dibujar rectángulo alrededor de la persona
                 x, y, w, h = cv2.boundingRect(contour)
-
-                # Rectángulo verde alrededor de la persona
-                cv2.rectangle(processed_frame, (x, y), (x + w, y + h), (0, 255, 0), 3)
-
-                # Texto "Persona #N" encima del rectángulo
-                label = f"Persona #{person_count}"
-                cv2.putText(processed_frame, label, (x, y - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                cv2.rectangle(processed_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         # Actualizar contador
         self.last_count = person_count
 
-        # ============================================================
-        # DIBUJAR INFORMACIÓN GENERAL EN EL FRAME
-        # ============================================================
+        # Dibujar información en el frame
+        cv2.putText(processed_frame, f"Personas: {person_count}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-        # Fondo semi-transparente para el HUD
-        overlay = processed_frame.copy()
-        cv2.rectangle(overlay, (0, 0), (400, 120), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.6, processed_frame, 0.4, 0, processed_frame)
-
-        # Título del procesador
-        cv2.putText(processed_frame, "CONTADOR DE PERSONAS", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        # Contador de personas
-        cv2.putText(processed_frame, f"Personas detectadas: {person_count}", (10, 65),
+        cv2.putText(processed_frame, f"Frame: {self.frame_count}", (10, 70),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        # Frame counter
-        cv2.putText(processed_frame, f"Frame: {self.frame_count}", (10, 95),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
-
-        # Timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cv2.putText(processed_frame, timestamp, (10, 115),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
 
         # Guardar en CSV cada 30 frames (~1 segundo a 30fps)
         self.frames_since_save += 1
