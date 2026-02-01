@@ -40,8 +40,7 @@ import controllers.camera_controller
 # import controllers.video_controller  <-- YA NO LO IMPORTES ASÍ SOLAMENTE
 
 # Importar y Registrar Blueprint de Video
-from controllers.video_controller import video_bp
-app.register_blueprint(video_bp, url_prefix='/video') # Las rutas serán /video/feed/...
+
 
 print("✅ Controladores registrados\n")
 
