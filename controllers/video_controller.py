@@ -1,242 +1,26 @@
 # controllers/video_controller.py
+"""
+Controlador de video para Cistem Vision.
+
+Provee endpoints para obtener URLs de streaming de video, tanto
+raw (directo de cámara) como procesado (con IA/bounding boxes).
+
+El video procesado se publica a MediaMTX por el VisionManager,
+permitiendo al frontend consumirlo eficientemente via HLS.
+"""
+
 from flask_socketio import emit
 from extensions import socketio
 from config.config_manager import device_config
 from modules.vision.manager import VisionManager
 from datetime import datetime
 from controllers.auth_controller import verify_token
-import threading
-import time
-import cv2
-import base64
+import os
 
 vision_manager = VisionManager()
 
-# Diccionario para rastrear clientes activos de streaming
-active_streams = {}  # {cam_id: {client_id: thread}}
-
-
-@socketio.on('get_camera_feed')
-def handle_get_camera_feed(data):
-    """
-    Evento: get_camera_feed
-    Inicia streaming de video procesado de una cámara
-    """
-    try:
-        # Verificar autenticación
-        token = data.get('token')
-        if not verify_token(token):
-            emit('get_camera_feed_response', {
-                'error': 'Token inválido o expirado',
-                'datetime': datetime.utcnow().isoformat() + 'Z'
-            })
-            return
-
-        # Validar parámetros
-        location_id = data.get('location_id')
-        device_id = data.get('device_id')
-        cam_id = data.get('cam_id')
-
-        if not all([location_id, device_id, cam_id]):
-            emit('get_camera_feed_response', {
-                'error': 'Los parámetros location_id, device_id y cam_id son requeridos',
-                'datetime': datetime.utcnow().isoformat() + 'Z'
-            })
-            return
-
-        # Verificar que la cámara existe
-        camera = device_config.get_camera(cam_id)
-        if not camera:
-            emit('get_camera_feed_response', {
-                'error': 'Cámara no encontrada con los parámetros proporcionados',
-                'datetime': datetime.utcnow().isoformat() + 'Z'
-            })
-            return
-
-        # Verificar que la cámara está encendida
-        if not camera['status']:
-            emit('get_camera_feed_response', {
-                'error': 'La cámara está apagada. Active la cámara antes de solicitar el stream de video',
-                'datetime': datetime.utcnow().isoformat() + 'Z'
-            })
-            return
-
-        # Verificar que hay un procesador activo
-        if not camera.get('active_processor'):
-            emit('get_camera_feed_response', {
-                'error': 'No hay un procesador activo seleccionado para esta cámara',
-                'datetime': datetime.utcnow().isoformat() + 'Z'
-            })
-            return
-
-        # Iniciar VisionManager si no está activo para esta cámara
-        if not vision_manager.is_camera_active(cam_id):
-            print(f"🚀 Iniciando VisionManager para cámara {cam_id}...")
-            if not vision_manager.start_camera(cam_id):
-                emit('get_camera_feed_response', {
-                    'error': 'Error al iniciar procesamiento de video',
-                    'datetime': datetime.utcnow().isoformat() + 'Z'
-                })
-                return
-
-        # Obtener ID del cliente (SocketIO request)
-        from flask import request
-        client_id = request.sid
-
-        # Iniciar thread de streaming para este cliente
-        if cam_id not in active_streams:
-            active_streams[cam_id] = {}
-
-        # Detener stream anterior si existe
-        if client_id in active_streams[cam_id]:
-            active_streams[cam_id][client_id]['stop'] = True
-
-        # Crear control de thread
-        stream_control = {'stop': False}
-        active_streams[cam_id][client_id] = stream_control
-
-        # Iniciar thread de streaming
-        thread = threading.Thread(
-            target=stream_video,
-            args=(cam_id, client_id, stream_control)
-        )
-        thread.daemon = True
-        thread.start()
-
-        emit('get_camera_feed_response', {
-            'streaming': True,
-            'format': 'MJPEG',
-            'location_id': location_id,
-            'device_id': device_id,
-            'cam_id': cam_id,
-            'resolution': '1920x1080',  # Ajustar según configuración
-            'fps': 30,
-            'datetime': datetime.utcnow().isoformat() + 'Z'
-        })
-
-        print(f"✅ Streaming iniciado para cámara {cam_id} - Cliente {client_id}")
-
-    except Exception as e:
-        print(f"❌ Error en get_camera_feed: {str(e)}")
-        emit('get_camera_feed_response', {
-            'error': 'Error al iniciar stream de video. Intente nuevamente',
-            'datetime': datetime.utcnow().isoformat() + 'Z'
-        })
-
-
-def stream_video(cam_id, client_id, stream_control):
-    """
-    Thread que envía frames de video procesado al cliente
-    """
-    try:
-        start_time = time.time()
-        frame_count = 0
-
-        while not stream_control['stop']:
-            # Obtener frame procesado del VisionManager
-            frame = vision_manager.get_processed_frame(cam_id)
-
-            if frame is not None:
-                # Convertir frame a base64 para enviar por SocketIO
-                _, buffer = cv2.imencode('.jpg', frame)
-                frame_base64 = base64.b64encode(buffer).decode('utf-8')
-
-                # Calcular tiempo activo
-                elapsed_time = int(time.time() - start_time)
-                hours = elapsed_time // 3600
-                minutes = (elapsed_time % 3600) // 60
-                seconds = elapsed_time % 60
-                time_active = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-                # Emitir frame al cliente específico
-                socketio.emit('video_frame', {
-                    'cam_id': cam_id,
-                    'frame': frame_base64,
-                    'time_active': time_active,
-                    'frame_number': frame_count
-                }, room=client_id)
-
-                frame_count += 1
-
-            # Control de FPS (30 FPS = ~33ms por frame)
-            time.sleep(0.033)
-
-        print(f"✅ Streaming detenido para cámara {cam_id} - Cliente {client_id}")
-
-    except Exception as e:
-        print(f"❌ Error en stream_video: {str(e)}")
-    finally:
-        # Limpiar
-        if cam_id in active_streams and client_id in active_streams[cam_id]:
-            del active_streams[cam_id][client_id]
-
-
-@socketio.on('stop_camera_feed')
-def handle_stop_camera_feed(data):
-    """
-    Evento: stop_camera_feed
-    Detiene el streaming de video de una cámara
-    """
-    try:
-        cam_id = data.get('cam_id')
-
-        if not cam_id:
-            emit('stop_camera_feed_response', {
-                'success': False,
-                'error': 'El parámetro cam_id es requerido',
-                'datetime': datetime.utcnow().isoformat() + 'Z'
-            })
-            return
-
-        # Obtener ID del cliente
-        from flask import request
-        client_id = request.sid
-
-        # Detener streaming
-        if cam_id in active_streams and client_id in active_streams[cam_id]:
-            active_streams[cam_id][client_id]['stop'] = True
-
-        emit('stop_camera_feed_response', {
-            'success': True,
-            'message': 'Streaming detenido correctamente',
-            'cam_id': cam_id,
-            'datetime': datetime.utcnow().isoformat() + 'Z'
-        })
-
-        print(f"✅ Streaming detenido manualmente para cámara {cam_id}")
-
-    except Exception as e:
-        print(f"❌ Error en stop_camera_feed: {str(e)}")
-        emit('stop_camera_feed_response', {
-            'success': False,
-            'error': 'Error al detener streaming',
-            'datetime': datetime.utcnow().isoformat() + 'Z'
-        })
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """
-    Maneja desconexión de cliente - limpia streams activos
-    """
-    from flask import request
-    client_id = request.sid
-
-    # Detener todos los streams de este cliente
-    for cam_id in list(active_streams.keys()):
-        if client_id in active_streams[cam_id]:
-            active_streams[cam_id][client_id]['stop'] = True
-            print(f"🔌 Cliente {client_id} desconectado - Stream de cámara {cam_id} detenido")
-
-
-# ============================================================
-# STREAMING VÍA MEDIAMTX (HLS/WebRTC)
-# ============================================================
-
-import os
-
 # Configuración de Tailscale y MediaMTX
-TAILSCALE_IP = os.getenv('TAILSCALE_IP', '100.73.141.61')  # ⬅️ CAMBIA ESTA IP
+TAILSCALE_IP = os.getenv('TAILSCALE_IP', '100.73.141.61')
 MEDIAMTX_HLS_PORT = os.getenv('MEDIAMTX_HLS_PORT', '8888')
 MEDIAMTX_WEBRTC_PORT = os.getenv('MEDIAMTX_WEBRTC_PORT', '8889')
 MEDIAMTX_RTSP_PORT = os.getenv('MEDIAMTX_RTSP_PORT', '8554')
@@ -246,7 +30,36 @@ MEDIAMTX_RTSP_PORT = os.getenv('MEDIAMTX_RTSP_PORT', '8554')
 def handle_get_camera_stream_url(data):
     """
     Evento: get_camera_stream_url
-    Retorna las URLs de streaming MediaMTX para una cámara específica
+
+    Retorna las URLs de streaming MediaMTX para una cámara.
+    Incluye tanto el stream RAW como el stream PROCESADO (con IA).
+
+    Request:
+        {
+            "token": "jwt_token",
+            "location_id": 1,
+            "device_id": 101,
+            "cam_id": 1001,
+            "processed": true  // Opcional: si true, devuelve URL de video procesado
+        }
+
+    Response:
+        {
+            "success": true,
+            "cam_id": 1001,
+            "streams": {
+                "hls": "http://...:8888/cam_1001/index.m3u8",
+                "webrtc": "http://...:8889/cam_1001",
+                "rtsp": "rtsp://...:8554/cam_1001"
+            },
+            "processed_streams": {  // Solo si hay procesador activo y cámara encendida
+                "hls": "http://...:8888/cam_1001_ai/index.m3u8",
+                "webrtc": "http://...:8889/cam_1001_ai",
+                "rtsp": "rtsp://...:8554/cam_1001_ai"
+            },
+            "ai_active": true,
+            "processor_id": 1
+        }
     """
     try:
         # Verificar autenticación
@@ -262,6 +75,7 @@ def handle_get_camera_stream_url(data):
         location_id = data.get('location_id')
         device_id = data.get('device_id')
         cam_id = data.get('cam_id')
+        want_processed = data.get('processed', True)  # Por defecto queremos procesado
 
         if not all([location_id, device_id, cam_id]):
             emit('get_camera_stream_url_response', {
@@ -279,25 +93,285 @@ def handle_get_camera_stream_url(data):
             })
             return
 
-        # Construir URLs de streaming vía MediaMTX
-        stream_urls = {
+        # URLs del stream RAW (directo de la cámara)
+        raw_streams = {
             'hls': f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}/index.m3u8',
             'webrtc': f'http://{TAILSCALE_IP}:{MEDIAMTX_WEBRTC_PORT}/cam_{cam_id}',
             'rtsp': f'rtsp://{TAILSCALE_IP}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}'
         }
 
-        emit('get_camera_stream_url_response', {
+        response = {
             'success': True,
             'cam_id': cam_id,
-            'streams': stream_urls,
+            'streams': raw_streams,
+            'ai_active': False,
+            'processor_id': None,
             'datetime': datetime.utcnow().isoformat() + 'Z'
-        })
+        }
 
-        print(f"✅ URLs de streaming MediaMTX enviadas para cámara {cam_id}")
+        # Si la cámara está activa y tiene procesador, iniciar/verificar el VisionManager
+        if camera['status'] and camera.get('active_processor') and want_processed:
+            processor_id = camera.get('active_processor')
+
+            # Iniciar VisionManager si no está activo
+            if not vision_manager.is_camera_active(cam_id):
+                print(f"🚀 Iniciando VisionManager para cámara {cam_id} (procesador {processor_id})...")
+                vision_manager.start_camera(cam_id, processor_id)
+
+            # Verificar si el VisionManager está activo
+            if vision_manager.is_camera_active(cam_id):
+                # URLs del stream PROCESADO (con bounding boxes)
+                processed_streams = {
+                    'hls': f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}_ai/index.m3u8',
+                    'webrtc': f'http://{TAILSCALE_IP}:{MEDIAMTX_WEBRTC_PORT}/cam_{cam_id}_ai',
+                    'rtsp': f'rtsp://{TAILSCALE_IP}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}_ai'
+                }
+
+                response['processed_streams'] = processed_streams
+                response['ai_active'] = True
+                response['processor_id'] = processor_id
+
+                print(f"✅ URLs de streaming (raw + procesado) enviadas para cámara {cam_id}")
+            else:
+                print(f"⚠️ VisionManager no pudo iniciarse para cámara {cam_id}")
+        else:
+            print(f"✅ URLs de streaming (solo raw) enviadas para cámara {cam_id}")
+
+        emit('get_camera_stream_url_response', response)
 
     except Exception as e:
         print(f"❌ Error en get_camera_stream_url: {str(e)}")
         emit('get_camera_stream_url_response', {
             'error': 'Error al obtener URLs de streaming',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
+
+
+@socketio.on('start_ai_processing')
+def handle_start_ai_processing(data):
+    """
+    Evento: start_ai_processing
+
+    Inicia el procesamiento de IA para una cámara específica.
+    Esto activa el VisionManager que captura video, lo procesa
+    con el procesador seleccionado, y lo republica a MediaMTX.
+
+    Request:
+        {
+            "token": "jwt_token",
+            "location_id": 1,
+            "device_id": 101,
+            "cam_id": 1001,
+            "processor_id": 1  // Opcional: si no se especifica, usa el activo
+        }
+    """
+    try:
+        # Verificar autenticación
+        token = data.get('token')
+        if not verify_token(token):
+            emit('start_ai_processing_response', {
+                'success': False,
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Validar parámetros
+        cam_id = data.get('cam_id')
+        processor_id = data.get('processor_id')
+
+        if not cam_id:
+            emit('start_ai_processing_response', {
+                'success': False,
+                'error': 'El parámetro cam_id es requerido',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Verificar que la cámara existe y está activa
+        camera = device_config.get_camera(cam_id)
+        if not camera:
+            emit('start_ai_processing_response', {
+                'success': False,
+                'error': 'Cámara no encontrada',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        if not camera['status']:
+            emit('start_ai_processing_response', {
+                'success': False,
+                'error': 'La cámara debe estar encendida para iniciar procesamiento IA',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Usar procesador especificado o el activo
+        if processor_id is None:
+            processor_id = camera.get('active_processor')
+
+        if processor_id is None:
+            emit('start_ai_processing_response', {
+                'success': False,
+                'error': 'No hay procesador especificado ni activo para esta cámara',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Detener procesamiento anterior si existe
+        if vision_manager.is_camera_active(cam_id):
+            vision_manager.stop_camera(cam_id)
+
+        # Iniciar VisionManager
+        if vision_manager.start_camera(cam_id, processor_id):
+            # URL del stream procesado
+            processed_stream_url = f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}_ai/index.m3u8'
+
+            emit('start_ai_processing_response', {
+                'success': True,
+                'message': 'Procesamiento IA iniciado correctamente',
+                'cam_id': cam_id,
+                'processor_id': processor_id,
+                'stream_url': processed_stream_url,
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            print(f"✅ Procesamiento IA iniciado para cámara {cam_id}")
+        else:
+            emit('start_ai_processing_response', {
+                'success': False,
+                'error': 'Error al iniciar procesamiento IA',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+
+    except Exception as e:
+        print(f"❌ Error en start_ai_processing: {str(e)}")
+        emit('start_ai_processing_response', {
+            'success': False,
+            'error': 'Error interno al iniciar procesamiento',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
+
+
+@socketio.on('stop_ai_processing')
+def handle_stop_ai_processing(data):
+    """
+    Evento: stop_ai_processing
+
+    Detiene el procesamiento de IA para una cámara.
+
+    Request:
+        {
+            "token": "jwt_token",
+            "cam_id": 1001
+        }
+    """
+    try:
+        # Verificar autenticación
+        token = data.get('token')
+        if not verify_token(token):
+            emit('stop_ai_processing_response', {
+                'success': False,
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        cam_id = data.get('cam_id')
+
+        if not cam_id:
+            emit('stop_ai_processing_response', {
+                'success': False,
+                'error': 'El parámetro cam_id es requerido',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        # Detener VisionManager
+        if vision_manager.is_camera_active(cam_id):
+            vision_manager.stop_camera(cam_id)
+            emit('stop_ai_processing_response', {
+                'success': True,
+                'message': 'Procesamiento IA detenido correctamente',
+                'cam_id': cam_id,
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            print(f"✅ Procesamiento IA detenido para cámara {cam_id}")
+        else:
+            emit('stop_ai_processing_response', {
+                'success': True,
+                'message': 'El procesamiento IA ya estaba detenido',
+                'cam_id': cam_id,
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+
+    except Exception as e:
+        print(f"❌ Error en stop_ai_processing: {str(e)}")
+        emit('stop_ai_processing_response', {
+            'success': False,
+            'error': 'Error al detener procesamiento',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
+
+
+@socketio.on('get_ai_status')
+def handle_get_ai_status(data):
+    """
+    Evento: get_ai_status
+
+    Obtiene el estado del procesamiento IA de una cámara.
+
+    Request:
+        {
+            "token": "jwt_token",
+            "cam_id": 1001
+        }
+
+    Response:
+        {
+            "success": true,
+            "cam_id": 1001,
+            "ai_active": true,
+            "processor_id": 1,
+            "stream_url": "http://..../cam_1001_ai/index.m3u8"
+        }
+    """
+    try:
+        token = data.get('token')
+        if not verify_token(token):
+            emit('get_ai_status_response', {
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        cam_id = data.get('cam_id')
+
+        if not cam_id:
+            emit('get_ai_status_response', {
+                'error': 'El parámetro cam_id es requerido',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        is_active = vision_manager.is_camera_active(cam_id)
+
+        response = {
+            'success': True,
+            'cam_id': cam_id,
+            'ai_active': is_active,
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        }
+
+        if is_active:
+            camera = device_config.get_camera(cam_id)
+            response['processor_id'] = camera.get('active_processor') if camera else None
+            response['stream_url'] = f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}_ai/index.m3u8'
+
+        emit('get_ai_status_response', response)
+
+    except Exception as e:
+        print(f"❌ Error en get_ai_status: {str(e)}")
+        emit('get_ai_status_response', {
+            'error': 'Error al obtener estado',
             'datetime': datetime.utcnow().isoformat() + 'Z'
         })
