@@ -69,6 +69,16 @@ def handle_get_camera_feed(data):
             })
             return
 
+        # Iniciar VisionManager si no está activo para esta cámara
+        if not vision_manager.is_camera_active(cam_id):
+            print(f"🚀 Iniciando VisionManager para cámara {cam_id}...")
+            if not vision_manager.start_camera(cam_id):
+                emit('get_camera_feed_response', {
+                    'error': 'Error al iniciar procesamiento de video',
+                    'datetime': datetime.utcnow().isoformat() + 'Z'
+                })
+                return
+
         # Obtener ID del cliente (SocketIO request)
         from flask import request
         client_id = request.sid
