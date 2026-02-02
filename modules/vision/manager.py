@@ -1,196 +1,268 @@
 # modules/vision/manager.py
 """
 VisionManager con soporte para re-publicar video procesado a MediaMTX.
-
-Este manager captura video de las cámaras via RTSP, procesa cada frame
-con los procesadores de IA (bounding boxes, zonas, etc.), y re-publica
-el video procesado a MediaMTX como un nuevo stream.
-
-Flujo:
-  Cámara (RTSP) → VisionManager → Procesador IA → FFmpeg → MediaMTX (RTSP)
-                                                              ↓
-                                                         Frontend (HLS)
+Version 2: Con soporte para NVENC (Jetson) y mejor manejo de errores.
 """
 
 import threading
 import subprocess
 import time
 import os
-from config.config_manager import device_config
-from modules.vision.processors import get_processor_class
-from modules.analytics.specialists.system_logger import system_logger
-from modules.analytics.specialists.alerts_engine import alerts_engine
 import cv2
 import numpy as np
 
-# Configuración de MediaMTX desde variables de entorno
+from config.config_manager import device_config
+from modules.vision.processors import get_processor_class
+from modules.analytics.specialists.system_logger import system_logger
+
+# Configuracion de MediaMTX
 MEDIAMTX_HOST = os.getenv('TAILSCALE_IP', '127.0.0.1')
 MEDIAMTX_RTSP_PORT = os.getenv('MEDIAMTX_RTSP_PORT', '8554')
 
-# Configuración de FFmpeg para publicar streams
-FFMPEG_CONFIG = {
-    'fps': 25,  # FPS del stream de salida
-    'width': 1280,  # Ancho del video (ajustar según necesidad)
-    'height': 720,  # Alto del video
-    'bitrate': '2M',  # Bitrate del video
-    'preset': 'ultrafast',  # Preset de encoding (ultrafast para baja latencia)
-    'tune': 'zerolatency',  # Optimización para streaming en vivo
-}
+
+def check_nvenc_available():
+    """Verifica si NVENC (Jetson hardware encoder) esta disponible."""
+    try:
+        result = subprocess.run(
+            ['ffmpeg', '-encoders'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        return 'h264_nvmpi' in result.stdout or 'h264_v4l2m2m' in result.stdout
+    except Exception:
+        return False
+
+
+def check_ffmpeg_codecs():
+    """Lista los encoders disponibles."""
+    try:
+        result = subprocess.run(
+            ['ffmpeg', '-encoders'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        print("[FFmpeg] Encoders H264 disponibles:")
+        for line in result.stdout.split('\n'):
+            if 'h264' in line.lower() or '264' in line:
+                print(f"  {line.strip()}")
+        return result.stdout
+    except Exception as e:
+        print(f"[FFmpeg] Error listando encoders: {e}")
+        return ""
 
 
 class RTSPPublisher:
-    """
-    Clase auxiliar que maneja la publicación de frames a MediaMTX via FFmpeg.
+    """Publica frames a MediaMTX via FFmpeg."""
 
-    Crea un proceso FFmpeg que recibe frames via pipe y los publica como RTSP.
-    """
-
-    def __init__(self, cam_id: int, width: int = None, height: int = None, fps: int = None):
-        """
-        Args:
-            cam_id: ID de la cámara (se usará para nombrar el stream)
-            width: Ancho del video
-            height: Alto del video
-            fps: Frames por segundo
-        """
+    def __init__(self, cam_id, width=None, height=None, fps=None):
         self.cam_id = cam_id
-        self.width = width or FFMPEG_CONFIG['width']
-        self.height = height or FFMPEG_CONFIG['height']
-        self.fps = fps or FFMPEG_CONFIG['fps']
+        self.width = width or 1280
+        self.height = height or 720
+        self.fps = fps or 15
         self.process = None
         self.is_running = False
         self.lock = threading.Lock()
-
-        # URL de salida: stream procesado con sufijo _ai
         self.output_url = f"rtsp://{MEDIAMTX_HOST}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}_ai"
+        self.error_count = 0
+        self.max_errors = 3
+
+    def _get_ffmpeg_command(self):
+        """Genera el comando FFmpeg con el mejor encoder disponible."""
+
+        # Detectar encoder disponible
+        encoders_output = ""
+        try:
+            result = subprocess.run(['ffmpeg', '-encoders'], capture_output=True, text=True, timeout=5)
+            encoders_output = result.stdout
+        except Exception:
+            pass
+
+        # TEMPORAL: Forzar libx264 hasta resolver problemas de hardware encoder
+        # Cambiar use_libx264_only a False cuando quieras probar hardware encoders
+        use_libx264_only = True
+
+        if use_libx264_only:
+            encoder_args = [
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-tune', 'zerolatency',
+            ]
+            print(f"[FFmpeg] Usando encoder: libx264 (software - forzado)")
+        # Elegir encoder (prioridad: hardware Jetson > software)
+        elif 'h264_nvmpi' in encoders_output:
+            encoder_args = ['-c:v', 'h264_nvmpi']
+            print(f"[FFmpeg] Usando encoder: h264_nvmpi (Jetson hardware)")
+        elif 'h264_v4l2m2m' in encoders_output:
+            encoder_args = ['-c:v', 'h264_v4l2m2m']
+            print(f"[FFmpeg] Usando encoder: h264_v4l2m2m (hardware)")
+        elif 'libx264' in encoders_output:
+            encoder_args = [
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-tune', 'zerolatency',
+            ]
+            print(f"[FFmpeg] Usando encoder: libx264 (software)")
+        else:
+            encoder_args = ['-c:v', 'libx264', '-preset', 'ultrafast']
+            print(f"[FFmpeg] Usando encoder: libx264 (fallback)")
+
+        # Comando base
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-pix_fmt', 'bgr24',
+            '-s', f'{self.width}x{self.height}',
+            '-r', str(self.fps),
+            '-i', '-',
+        ]
+
+        # Agregar encoder
+        cmd.extend(encoder_args)
+
+        # Parametros de salida
+        cmd.extend([
+            '-pix_fmt', 'yuv420p',
+            '-b:v', '2M',
+            '-maxrate', '2M',
+            '-bufsize', '4M',
+            '-g', str(self.fps * 2),
+            '-f', 'rtsp',
+            '-rtsp_transport', 'tcp',
+            self.output_url
+        ])
+
+        return cmd
 
     def start(self):
-        """Inicia el proceso FFmpeg para publicar el stream."""
+        """Inicia FFmpeg."""
         if self.is_running:
             return True
 
+        # Verificar que MediaMTX este accesible
+        print(f"[FFmpeg] Verificando conexion a MediaMTX: {MEDIAMTX_HOST}:{MEDIAMTX_RTSP_PORT}")
+
         try:
-            # Comando FFmpeg para recibir frames raw y publicar como RTSP
-            ffmpeg_cmd = [
-                'ffmpeg',
-                '-y',  # Sobrescribir sin preguntar
-                '-f', 'rawvideo',  # Formato de entrada: video raw
-                '-vcodec', 'rawvideo',
-                '-pix_fmt', 'bgr24',  # Formato de píxeles (OpenCV usa BGR)
-                '-s', f'{self.width}x{self.height}',  # Resolución
-                '-r', str(self.fps),  # FPS de entrada
-                '-i', '-',  # Entrada desde stdin (pipe)
-                '-c:v', 'libx264',  # Codec de video
-                '-preset', FFMPEG_CONFIG['preset'],
-                '-tune', FFMPEG_CONFIG['tune'],
-                '-b:v', FFMPEG_CONFIG['bitrate'],
-                '-maxrate', FFMPEG_CONFIG['bitrate'],
-                '-bufsize', '4M',
-                '-pix_fmt', 'yuv420p',  # Formato de salida estándar
-                '-g', str(self.fps * 2),  # GOP size (keyframe cada 2 segundos)
-                '-f', 'rtsp',  # Formato de salida: RTSP
-                '-rtsp_transport', 'tcp',  # Usar TCP para mayor estabilidad
-                self.output_url
-            ]
+            ffmpeg_cmd = self._get_ffmpeg_command()
 
-            print(f"🎬 Iniciando FFmpeg publisher para cámara {self.cam_id}")
-            print(f"   Resolución: {self.width}x{self.height} @ {self.fps}fps")
-            print(f"   URL salida: {self.output_url}")
+            print(f"[FFmpeg] Iniciando publisher para cam {self.cam_id}")
+            print(f"[FFmpeg] Resolucion: {self.width}x{self.height} @ {self.fps}fps")
+            print(f"[FFmpeg] URL salida: {self.output_url}")
+            print(f"[FFmpeg] Comando: {' '.join(ffmpeg_cmd)}")
 
-            # Iniciar proceso FFmpeg
             self.process = subprocess.Popen(
                 ffmpeg_cmd,
                 stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                bufsize=10 ** 8  # Buffer grande para evitar bloqueos
+                bufsize=10 ** 8
             )
+
+            # Esperar un momento para ver si hay error inmediato
+            time.sleep(0.5)
+
+            if self.process.poll() is not None:
+                # Proceso termino inmediatamente - hay error
+                stderr = self.process.stderr.read().decode('utf-8', errors='ignore')
+                print(f"[FFmpeg] Error al iniciar: {stderr[-500:]}")
+                self.process = None
+                return False
 
             self.is_running = True
+            self.error_count = 0
 
-            # Thread para monitorear errores de FFmpeg
-            error_thread = threading.Thread(
-                target=self._monitor_errors,
-                daemon=True
-            )
-            error_thread.start()
+            # Thread para monitorear errores
+            t = threading.Thread(target=self._monitor_errors, daemon=True)
+            t.start()
 
-            print(f"✅ FFmpeg publisher iniciado para cámara {self.cam_id}")
+            print(f"[FFmpeg] Publisher iniciado para cam {self.cam_id}")
             return True
 
         except Exception as e:
-            print(f"❌ Error iniciando FFmpeg: {str(e)}")
+            print(f"[FFmpeg] Error iniciando: {e}")
             self.is_running = False
             return False
 
     def _monitor_errors(self):
-        """Monitorea stderr de FFmpeg para detectar errores."""
-        if not self.process:
+        """Monitorea stderr de FFmpeg."""
+        if not self.process or not self.process.stderr:
             return
-
         try:
-            for line in self.process.stderr:
+            while self.is_running and self.process:
+                line = self.process.stderr.readline()
+                if not line:
+                    break
                 line_str = line.decode('utf-8', errors='ignore').strip()
-                # Solo mostrar errores importantes, ignorar info de progreso
-                if 'error' in line_str.lower() or 'fatal' in line_str.lower():
-                    print(f"⚠️ FFmpeg [{self.cam_id}]: {line_str}")
-        except:
+                if line_str:
+                    # Mostrar errores importantes
+                    line_lower = line_str.lower()
+                    if 'error' in line_lower or 'fatal' in line_lower or 'failed' in line_lower:
+                        print(f"[FFmpeg] Error cam {self.cam_id}: {line_str}")
+                    elif 'warning' in line_lower:
+                        print(f"[FFmpeg] Warning cam {self.cam_id}: {line_str}")
+        except Exception:
             pass
 
-    def write_frame(self, frame: np.ndarray):
-        """
-        Escribe un frame al proceso FFmpeg.
-
-        Args:
-            frame: Frame de OpenCV (numpy array BGR)
-        """
+    def write_frame(self, frame):
+        """Escribe un frame a FFmpeg."""
         if not self.is_running or not self.process:
+            return False
+
+        # Verificar si el proceso sigue vivo
+        if self.process.poll() is not None:
+            print(f"[FFmpeg] Proceso terminado inesperadamente cam {self.cam_id}")
+            self.is_running = False
             return False
 
         try:
             with self.lock:
-                # Redimensionar frame si es necesario
                 h, w = frame.shape[:2]
                 if w != self.width or h != self.height:
                     frame = cv2.resize(frame, (self.width, self.height))
 
-                # Escribir frame al pipe de FFmpeg
                 self.process.stdin.write(frame.tobytes())
+                self.process.stdin.flush()
+                self.error_count = 0
                 return True
 
         except BrokenPipeError:
-            print(f"❌ Pipe roto en FFmpeg publisher {self.cam_id}")
-            self.stop()
+            self.error_count += 1
+            print(f"[FFmpeg] Pipe roto cam {self.cam_id} (error {self.error_count}/{self.max_errors})")
+            if self.error_count >= self.max_errors:
+                self.stop()
             return False
         except Exception as e:
-            print(f"❌ Error escribiendo frame: {str(e)}")
+            self.error_count += 1
+            print(f"[FFmpeg] Error escribiendo frame: {e}")
             return False
 
     def stop(self):
-        """Detiene el proceso FFmpeg."""
+        """Detiene FFmpeg."""
         self.is_running = False
-
         if self.process:
             try:
                 self.process.stdin.close()
+            except Exception:
+                pass
+            try:
                 self.process.terminate()
-                self.process.wait(timeout=5)
-            except:
-                self.process.kill()
+                self.process.wait(timeout=3)
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
             finally:
                 self.process = None
-
-        print(f"🛑 FFmpeg publisher detenido para cámara {self.cam_id}")
+        print(f"[FFmpeg] Publisher detenido cam {self.cam_id}")
 
 
 class VisionManager:
-    """
-    Singleton que gestiona todas las cámaras y sus procesadores.
+    """Singleton que gestiona camaras y procesadores."""
 
-    Ahora incluye soporte para re-publicar video procesado a MediaMTX,
-    permitiendo que el frontend consuma el video con bounding boxes
-    via HLS/WebRTC de manera eficiente.
-    """
     _instance = None
 
     def __new__(cls):
@@ -202,61 +274,44 @@ class VisionManager:
     def __init__(self):
         if self._initialized:
             return
-
-        # Diccionario de cámaras activas: {cam_id: camera_thread_data}
         self.active_cameras = {}
-
-        # Lock para thread-safety
         self.lock = threading.Lock()
-
         self._initialized = True
-        print("✅ VisionManager inicializado (con soporte MediaMTX)")
+
+        # Mostrar info de encoders al inicio
+        print("[VisionManager] Inicializado con soporte MediaMTX")
+        check_ffmpeg_codecs()
 
     def start_camera(self, cam_id, processor_id=None):
-        """
-        Inicia captura, procesamiento y re-publicación de una cámara.
-
-        Args:
-            cam_id: ID de la cámara
-            processor_id: ID del procesador (si None, usa el activo en config)
-        """
+        """Inicia procesamiento de una camara."""
         with self.lock:
-            # Verificar si ya está activa
             if cam_id in self.active_cameras:
-                print(f"⚠️ Cámara {cam_id} ya está activa")
-                return False
+                print(f"[VisionManager] Camara {cam_id} ya activa")
+                return True
 
-            # Obtener configuración de la cámara
             camera = device_config.get_camera(cam_id)
             if not camera:
-                print(f"❌ Cámara {cam_id} no encontrada en configuración")
+                print(f"[VisionManager] Camara {cam_id} no encontrada")
                 return False
 
-            # Determinar procesador a usar
             if processor_id is None:
                 processor_id = camera.get('active_processor')
 
             if processor_id is None:
-                print(f"❌ No hay procesador asignado a cámara {cam_id}")
+                print(f"[VisionManager] Sin procesador para cam {cam_id}")
                 return False
 
-            # Obtener clase del procesador
             ProcessorClass = get_processor_class(processor_id)
             if not ProcessorClass:
-                print(f"❌ Procesador {processor_id} no encontrado")
+                print(f"[VisionManager] Procesador {processor_id} no encontrado")
                 return False
 
-            # Obtener URL RTSP
             rtsp_url = device_config.get_rtsp_url(cam_id)
             if not rtsp_url:
-                print(f"❌ URL RTSP no configurada para cámara {cam_id}")
-                system_logger.log(cam_id, "URL RTSP no configurada", "ERROR")
+                print(f"[VisionManager] Sin URL RTSP para cam {cam_id}")
                 return False
 
-            # Crear publisher de RTSP
-            rtsp_publisher = RTSPPublisher(cam_id)
-
-            # Crear control de thread
+            # No crear el publisher aqui, se crea en el loop cuando sabemos la resolucion
             camera_data = {
                 'cam_id': cam_id,
                 'rtsp_url': rtsp_url,
@@ -267,11 +322,10 @@ class VisionManager:
                 'processed_frame': None,
                 'thread': None,
                 'capture': None,
-                'rtsp_publisher': rtsp_publisher,  # Nuevo: publisher
-                'output_url': rtsp_publisher.output_url,  # URL del stream procesado
+                'rtsp_publisher': None,
+                'output_url': f"rtsp://{MEDIAMTX_HOST}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}_ai",
             }
 
-            # Crear y arrancar thread
             thread = threading.Thread(
                 target=self._camera_loop,
                 args=(camera_data,),
@@ -280,235 +334,206 @@ class VisionManager:
             camera_data['thread'] = thread
             thread.start()
 
-            # Registrar en diccionario
             self.active_cameras[cam_id] = camera_data
 
-            print(f"✅ Cámara {cam_id} iniciada con procesador {processor_id}")
-            print(f"   Stream procesado disponible en: {rtsp_publisher.output_url}")
+            print(f"[VisionManager] Camara {cam_id} iniciada con procesador {processor_id}")
             return True
 
     def stop_camera(self, cam_id):
-        """
-        Detiene captura, procesamiento y publicación de una cámara.
-
-        Args:
-            cam_id: ID de la cámara
-        """
+        """Detiene procesamiento de una camara."""
         with self.lock:
             if cam_id not in self.active_cameras:
-                print(f"⚠️ Cámara {cam_id} no está activa")
+                print(f"[VisionManager] Camara {cam_id} no activa")
                 return False
 
-            # Señalizar detención
             camera_data = self.active_cameras[cam_id]
             camera_data['stop_flag'] = True
 
-            # Esperar a que termine el thread
-            if camera_data['thread'].is_alive():
-                camera_data['thread'].join(timeout=3.0)
+            if camera_data['thread'] and camera_data['thread'].is_alive():
+                camera_data['thread'].join(timeout=5.0)
 
-            # Detener publisher RTSP
             if camera_data.get('rtsp_publisher'):
                 camera_data['rtsp_publisher'].stop()
 
-            # Liberar recursos
-            if camera_data['capture']:
-                camera_data['capture'].release()
+            if camera_data.get('capture'):
+                try:
+                    camera_data['capture'].release()
+                except Exception:
+                    pass
 
-            # Eliminar del diccionario
             del self.active_cameras[cam_id]
-
-            print(f"✅ Cámara {cam_id} detenida")
+            print(f"[VisionManager] Camara {cam_id} detenida")
             return True
 
     def get_processed_frame(self, cam_id):
-        """
-        Obtiene el último frame procesado de una cámara.
-
-        Args:
-            cam_id: ID de la cámara
-
-        Returns:
-            numpy.ndarray: Frame procesado o None
-        """
+        """Obtiene ultimo frame procesado."""
         if cam_id not in self.active_cameras:
             return None
-
         return self.active_cameras[cam_id].get('processed_frame')
 
     def get_raw_frame(self, cam_id):
-        """
-        Obtiene el último frame sin procesar de una cámara.
-
-        Args:
-            cam_id: ID de la cámara
-
-        Returns:
-            numpy.ndarray: Frame raw o None
-        """
+        """Obtiene ultimo frame raw."""
         if cam_id not in self.active_cameras:
             return None
-
         return self.active_cameras[cam_id].get('current_frame')
 
     def get_processed_stream_url(self, cam_id):
-        """
-        Obtiene la URL del stream procesado para una cámara.
-
-        Args:
-            cam_id: ID de la cámara
-
-        Returns:
-            str: URL RTSP del stream procesado o None
-        """
+        """Obtiene URL del stream procesado."""
         if cam_id not in self.active_cameras:
             return None
-
         return self.active_cameras[cam_id].get('output_url')
 
     def is_camera_active(self, cam_id):
-        """Verifica si una cámara está activa"""
+        """Verifica si camara esta activa."""
         return cam_id in self.active_cameras
 
     def _camera_loop(self, camera_data):
-        """
-        Loop principal de captura, procesamiento y publicación.
-
-        Ejecuta en thread separado para cada cámara.
-
-        Args:
-            camera_data: Diccionario con datos de la cámara
-        """
+        """Loop principal de captura y procesamiento."""
         cam_id = camera_data['cam_id']
         rtsp_url = camera_data['rtsp_url']
         processor = camera_data['processor']
-        rtsp_publisher = camera_data['rtsp_publisher']
 
-        # Intentar conectar a RTSP de entrada
-        print(f"🔌 Conectando a RTSP: {rtsp_url}")
-        capture = cv2.VideoCapture(rtsp_url)
+        print(f"[CameraLoop] Conectando a RTSP: {rtsp_url}")
+
+        # Configurar captura con timeout
+        capture = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Buffer minimo para baja latencia
 
         if not capture.isOpened():
-            print(f"❌ Error conectando a RTSP de cámara {cam_id}")
+            print(f"[CameraLoop] Error conectando cam {cam_id}")
             system_logger.rtsp_connection_failed(cam_id)
             return
 
         camera_data['capture'] = capture
 
-        # Obtener resolución del video de entrada
+        # Obtener propiedades del video
         input_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
         input_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        input_fps = capture.get(cv2.CAP_PROP_FPS) or 25
+        input_fps = capture.get(cv2.CAP_PROP_FPS)
 
-        print(f"📹 Video de entrada: {input_width}x{input_height} @ {input_fps:.1f}fps")
+        # Validar FPS
+        if input_fps <= 0 or input_fps > 60:
+            input_fps = 15
 
-        # Configurar publisher con la resolución correcta
-        rtsp_publisher.width = input_width
-        rtsp_publisher.height = input_height
-        rtsp_publisher.fps = int(input_fps)
+        print(f"[CameraLoop] Video entrada: {input_width}x{input_height} @ {input_fps:.1f}fps")
+
+        # Crear publisher con la resolucion correcta
+        rtsp_publisher = RTSPPublisher(
+            cam_id,
+            width=input_width,
+            height=input_height,
+            fps=int(input_fps)
+        )
+        camera_data['rtsp_publisher'] = rtsp_publisher
 
         # Iniciar publisher
         if not rtsp_publisher.start():
-            print(f"❌ No se pudo iniciar publisher para cámara {cam_id}")
-            capture.release()
-            return
+            print(f"[CameraLoop] No se pudo iniciar publisher cam {cam_id}")
+            print(f"[CameraLoop] Continuando sin publicar a MediaMTX...")
+            # Continuar sin publisher para que al menos el procesamiento funcione
+            rtsp_publisher = None
 
         system_logger.camera_started(cam_id)
-        print(f"✅ Cámara {cam_id} conectada y publicando")
+        print(f"[CameraLoop] Camara {cam_id} conectada")
 
-        # Contadores para diagnóstico
         frame_count = 0
         error_count = 0
         last_fps_check = time.time()
         fps_frame_count = 0
+        publisher_retry_count = 0
+        max_publisher_retries = 5
 
-        # Control de timing para mantener FPS estable
-        frame_time = 1.0 / rtsp_publisher.fps
+        # Control de FPS
+        target_fps = int(input_fps) if input_fps > 0 else 15
+        frame_interval = 1.0 / target_fps
         last_frame_time = time.time()
 
         while not camera_data['stop_flag']:
             try:
-                # Capturar frame
                 ret, frame = capture.read()
 
                 if not ret:
                     error_count += 1
-
-                    if error_count > 10:
-                        print(f"❌ Demasiados errores en cámara {cam_id}, reconectando...")
+                    if error_count > 30:
+                        print(f"[CameraLoop] Muchos errores cam {cam_id}, reconectando...")
                         system_logger.rtsp_connection_failed(cam_id)
-
-                        # Intentar reconectar
                         capture.release()
                         time.sleep(2)
-                        capture = cv2.VideoCapture(rtsp_url)
-
+                        capture = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
                         if capture.isOpened():
                             camera_data['capture'] = capture
                             error_count = 0
                             system_logger.rtsp_connection_restored(cam_id)
                         else:
-                            print(f"❌ No se pudo reconectar cámara {cam_id}")
+                            print(f"[CameraLoop] No se pudo reconectar cam {cam_id}")
                             break
-
-                    time.sleep(0.1)
+                    time.sleep(0.033)
                     continue
 
-                # Reset error counter si captura exitosa
                 error_count = 0
-
-                # Guardar frame raw
                 camera_data['current_frame'] = frame.copy()
 
-                # Procesar frame con el procesador de IA
+                # Procesar frame
                 try:
                     processed_frame = processor.process_frame(frame)
                     camera_data['processed_frame'] = processed_frame
                 except Exception as e:
-                    print(f"❌ Error en procesador de cámara {cam_id}: {str(e)}")
+                    print(f"[CameraLoop] Error procesador cam {cam_id}: {e}")
                     system_logger.processor_error(cam_id, str(e))
-                    # Usar frame original si falla el procesamiento
                     processed_frame = frame.copy()
                     camera_data['processed_frame'] = processed_frame
 
-                # Publicar frame procesado a MediaMTX
-                if not rtsp_publisher.write_frame(processed_frame):
-                    # Intentar reiniciar publisher si falla
-                    print(f"⚠️ Reiniciando publisher para cámara {cam_id}...")
-                    rtsp_publisher.stop()
-                    time.sleep(0.5)
-                    rtsp_publisher.start()
+                # Publicar frame (si hay publisher)
+                if rtsp_publisher and rtsp_publisher.is_running:
+                    if not rtsp_publisher.write_frame(processed_frame):
+                        publisher_retry_count += 1
+                        if publisher_retry_count <= max_publisher_retries:
+                            print(
+                                f"[CameraLoop] Reintentando publisher cam {cam_id} ({publisher_retry_count}/{max_publisher_retries})...")
+                            time.sleep(1)
+                            rtsp_publisher.stop()
+                            time.sleep(0.5)
+                            if not rtsp_publisher.start():
+                                print(f"[CameraLoop] No se pudo reiniciar publisher")
+                        else:
+                            print(f"[CameraLoop] Desactivando publisher para cam {cam_id}")
+                            rtsp_publisher.stop()
+                            rtsp_publisher = None
+                            camera_data['rtsp_publisher'] = None
+                else:
+                    publisher_retry_count = 0
 
                 frame_count += 1
                 fps_frame_count += 1
 
                 # Calcular FPS cada 5 segundos
-                if time.time() - last_fps_check >= 5.0:
+                current_time = time.time()
+                if current_time - last_fps_check >= 5.0:
                     fps = fps_frame_count / 5.0
                     fps_frame_count = 0
-                    last_fps_check = time.time()
+                    last_fps_check = current_time
 
-                    # Advertir si FPS es bajo
+                    status = "con publisher" if (rtsp_publisher and rtsp_publisher.is_running) else "sin publisher"
+                    print(f"[CameraLoop] Camara {cam_id}: {fps:.1f} FPS ({status})")
+
                     if fps < 10:
                         system_logger.low_fps_warning(cam_id, int(fps))
-                    else:
-                        print(f"📊 Cámara {cam_id}: {fps:.1f} FPS")
 
-                # Control de timing para mantener FPS estable
-                current_time = time.time()
-                elapsed = current_time - last_frame_time
-                sleep_time = frame_time - elapsed
+                # Control de FPS
+                elapsed = time.time() - last_frame_time
+                sleep_time = frame_interval - elapsed
                 if sleep_time > 0:
                     time.sleep(sleep_time)
                 last_frame_time = time.time()
 
             except Exception as e:
-                print(f"❌ Error inesperado en loop de cámara {cam_id}: {str(e)}")
-                system_logger.log(cam_id, f"Error en loop: {str(e)}", "ERROR")
+                print(f"[CameraLoop] Error inesperado cam {cam_id}: {e}")
+                system_logger.log(cam_id, f"Error en loop: {e}", "ERROR")
                 time.sleep(0.5)
 
-        # Limpieza al salir
-        rtsp_publisher.stop()
+        # Limpieza
+        if rtsp_publisher:
+            rtsp_publisher.stop()
         capture.release()
-        print(f"🛑 Loop de cámara {cam_id} terminado ({frame_count} frames procesados)")
+        print(f"[CameraLoop] Loop cam {cam_id} terminado ({frame_count} frames)")
         system_logger.camera_stopped(cam_id)
