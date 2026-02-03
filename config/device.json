@@ -118,6 +118,23 @@
         2
       ],
       "active_processor": 2
+    },
+    {
+      "cam_id": 1008,
+      "label": "Perro Robotico",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1008",
+      "position": [
+        90,
+        90
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "active_processor": 4
     }
   ]
 }
