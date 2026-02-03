@@ -13,6 +13,7 @@ def handle_get_stations(data):
     """
     Evento: get_stations
     Retorna la jerarquía completa: location → device → cameras → processors
+    Incluye la cámara del robot si está conectado
     """
     try:
         # Verificar autenticación
@@ -55,11 +56,19 @@ def handle_get_stations(data):
             cameras_data.append({
                 'cam_id': cam['cam_id'],
                 'label': cam['label'],
+                'type': 'fixed',  # ✅ NUEVO: Tipo de cámara
                 'status': cam['status'],
                 'position': cam['position'],
                 'processors': processors_list,
                 'logs': recent_logs
             })
+
+        # ✅ NUEVO: Agregar cámara del robot si está conectada
+        from controllers.robot_controller import get_robot_camera_data
+        robot_camera = get_robot_camera_data()
+        if robot_camera:
+            cameras_data.append(robot_camera)
+            print(f"🤖 Cámara del robot incluida en get_stations: {robot_camera['label']}")
 
         # Construir respuesta jerárquica
         response = {

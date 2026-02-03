@@ -37,8 +37,14 @@ import controllers.station_controller
 import controllers.logs_controller
 import controllers.alerts_controller
 import controllers.camera_controller
-import controllers.video_controller 
+import controllers.video_controller
+import controllers.robot_controller  # ✅ NUEVO: Controlador del robot
 print("✅ Controladores registrados\n")
+
+# ✅ NUEVO: Registrar rutas HTTP del robot
+from controllers.robot_controller import register_robot_routes
+register_robot_routes(app)
+print("🤖 Rutas del robot registradas\n")
 
 
 # Evento de conexión
@@ -61,9 +67,10 @@ def index():
     """Ruta raíz con información del servicio"""
     return {
         'service': 'Cistem Vision Backend',
-        'version': '1.1',
+        'version': '1.2',  # ✅ Incrementada versión
         'status': 'running',
-        'protocol': 'SocketIO'
+        'protocol': 'SocketIO',
+        'features': ['fixed_cameras', 'mobile_robot']  # ✅ NUEVO
     }
 
 
@@ -72,6 +79,7 @@ def health():
     """Endpoint de health check"""
     from config.config_manager import device_config
     from modules.vision.processors import get_available_processors
+    from controllers.robot_controller import robot_data  # ✅ NUEVO
 
     device_info = device_config.get_device_info()
     processors = get_available_processors()
@@ -80,20 +88,19 @@ def health():
         'status': 'healthy',
         'device': device_info,
         'processors_count': len(processors),
-        'processors': list(processors.keys())
+        'processors': list(processors.keys()),
+        'robot_connected': robot_data.get('is_active', False),  # ✅ NUEVO
+        'robot_last_update': robot_data.get('last_update')  # ✅ NUEVO
     }
 
 
 # ============================================================
-# NUEVA RUTA: SERVIR MAPAS
+# RUTA: SERVIR MAPAS
 # ============================================================
-@app.route('/home/nix/PycharmProjects/cistem_vision_back/static/maps/mapanix.jpeg')
+@app.route('/static/maps/<path:filename>')
 def serve_map(filename):
     """
     Sirve imágenes de mapas desde static/maps/
-
-    Ejemplo de uso:
-    http://localhost:5000/static/maps/laboratorio_principal.png
     """
     try:
         return send_from_directory('static/maps', filename)
@@ -110,7 +117,7 @@ if __name__ == '__main__':
     DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
     print("=" * 60)
-    print("🎥 CISTEM VISION BACKEND v1.1")
+    print("🎥 CISTEM VISION BACKEND v1.2")
     print("=" * 60)
     print(f"🚀 Servidor iniciando en puerto {PORT}")
     print(f"🐛 Modo debug: {DEBUG}")
@@ -142,6 +149,8 @@ if __name__ == '__main__':
     print(f"✅ Servidor listo en http://localhost:{PORT}")
     print(f"✅ WebSocket en ws://localhost:{PORT}")
     print(f"🗺️  Mapas en http://localhost:{PORT}/static/maps/")
+    print(f"🤖 Robot endpoint: POST http://localhost:{PORT}/api/robot/data")  # ✅ NUEVO
+    print(f"🧪 Robot test: POST http://localhost:{PORT}/api/robot/test")  # ✅ NUEVO
     print("=" * 60)
     print()
 
