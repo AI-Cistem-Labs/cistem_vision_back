@@ -6,7 +6,7 @@
     "location_id": 1,
     "label": "Laboratorio Principal",
     "description": "Centro de vigilancia - Zona A",
-    "mapImageUrl": "http://100.73.141.61:5000/static/maps/mapanix.jpeg",
+    "mapImageUrl": "http://100.73.141.61:5000/static/maps/mapacistem.jpeg",
     "isActive": true,
     "mapDimensions": {
       "width": 1920,
@@ -25,9 +25,11 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3,
+        4
       ],
-      "active_processor": 2
+      "active_processor": 4
     },
     {
       "cam_id": 1002,
