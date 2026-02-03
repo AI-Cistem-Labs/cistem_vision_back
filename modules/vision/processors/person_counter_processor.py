@@ -30,7 +30,7 @@ class PersonCounterProcessor(BaseProcessor):
         # ============================================================
         try:
             # Intentar cargar modelo personalizado primero
-            model_path = "models/yolo11s.pt"
+            model_path = "models/bestpersonas.pt"
             if os.path.exists(model_path):
                 self.model = YOLO(model_path)
                 print(f"✅ Modelo personalizado cargado: {model_path}")

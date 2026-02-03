@@ -30,7 +30,7 @@ class FlowCarsProcessor(BaseProcessor):
         # ============================================================
         try:
             # Intentar cargar modelo personalizado primero
-            model_path = "models/yolo11n.pt"
+            model_path = "models/NixitoS.pt"
             if os.path.exists(model_path):
                 self.model = YOLO(model_path)
                 print(f"✅ Modelo personalizado cargado: {model_path}")
