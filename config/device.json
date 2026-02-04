@@ -6,7 +6,7 @@
     "location_id": 1,
     "label": "Laboratorio Principal",
     "description": "Centro de vigilancia - Zona A",
-    "mapImageUrl": "http://100.73.141.61:5000/static/maps/mapanix.jpeg",
+    "mapImageUrl": "http://100.73.141.61:5000/static/maps/mapaaicistem.png",
     "isActive": true,
     "mapDimensions": {
       "width": 1920,
@@ -19,8 +19,8 @@
       "label": "Sala de Reuniones",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
       "position": [
-        22.471540178571427,
-        35.2359693877551
+        45.47154017857142,
+        70.2359693877551
       ],
       "status": true,
       "available_processors": [
@@ -34,8 +34,8 @@
       "label": "Acceso Oficina y Taller",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1002",
       "position": [
-        90,
-        70
+        40,
+        60
       ],
       "status": true,
       "available_processors": [
@@ -49,8 +49,8 @@
       "label": "Almacen Interno",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1003",
       "position": [
-        40,
-        50
+        20,
+        75
       ],
       "status": true,
       "available_processors": [
@@ -64,8 +64,8 @@
       "label": "Acceso a Oficinas",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1004",
       "position": [
-        60,
-        70
+        35,
+        65
       ],
       "status": true,
       "available_processors": [
@@ -79,8 +79,8 @@
       "label": "Oficina",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1005",
       "position": [
-        50,
-        50
+        45,
+        55
       ],
       "status": true,
       "available_processors": [
@@ -94,8 +94,8 @@
       "label": "Estacionamiento Subterraneo",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1006",
       "position": [
-        60,
-        60
+        45,
+        45
       ],
       "status": true,
       "available_processors": [
@@ -110,7 +110,7 @@
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1007",
       "position": [
         80,
-        80
+        75
       ],
       "status": true,
       "available_processors": [
@@ -124,8 +124,8 @@
       "label": "Perro Robotico",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1008",
       "position": [
-        90,
-        90
+        20,
+        60
       ],
       "status": true,
       "available_processors": [
@@ -134,7 +134,7 @@
         3,
         4
       ],
-      "active_processor": 4
+      "active_processor": 1
     }
   ]
 }
