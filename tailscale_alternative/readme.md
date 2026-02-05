@@ -15,4 +15,4 @@ Read the documentation in each component's folder:
 
 ## Upcoming Features
 * [ ] Improved identifier (currently using NODE_NAME, which may not be unique, and also may me mutable)
-* [ ] Delete peers from the hub if they have been offline for a long time. This is more than just deleting from the database, also removing from WireGuard config.
+* [ ] Delete peers from the hub if they have been offline for a long time. This is more than just deleting from the database, also removing from WireGuard config. 
