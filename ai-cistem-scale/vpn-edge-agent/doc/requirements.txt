@@ -1,0 +1,4 @@
+dotenv
+requests
+opencv-python
+flask
