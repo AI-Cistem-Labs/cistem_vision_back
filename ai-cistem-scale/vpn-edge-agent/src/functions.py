@@ -1,9 +1,9 @@
 import requests
-from wireguard import generar_claves, escribir_config, levantar_tunel, generar_nuevas_claves, solicitar_rotacion, aplicar_nueva_clave
+from src.wireguard import generar_claves, escribir_config, levantar_tunel, generar_nuevas_claves, solicitar_rotacion, aplicar_nueva_clave
+from src.bootstrap import registrar_en_hub
+from dotenv import load_dotenv
 import time
 import os
-from dotenv import load_dotenv
-from bootstrap import registrar_en_hub
 import subprocess
 import re
 
