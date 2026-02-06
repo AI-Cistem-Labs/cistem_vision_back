@@ -1,6 +1,6 @@
 # How to test if it works?
 1. Establish the VPN connection using the VPN Edge Agent. Follow the setup instructions in the [VPN Edge Agent Setup Instructions](./readme.md) to configure.
-2. In the `../tests` folder, they are two test scripts, `client_payload.js` and `hub_video_streamer.py`.
+2. In the `../tests` folder, they are two test scripts, `client_payload.py` and `hub_video_streamer.py`.
 
 ## Test 1: Curl Test
 1. Open a terminal and navigate to the `./vpn-edge-agent/` directory.
