@@ -1,24 +1,28 @@
-import cv2
-from flask import Flask, Response
+import gi
+gi.require_version("Gst", "1.0")
+gi.require_version("GstRtspServer", "1.0")
+from gi.repository import Gst, GstRtspServer, GLib
 
-app = Flask(__name__)
-video_capture = cv2.VideoCapture(0)
+Gst.init(None)
 
-def generate_frames():
-    while True:
-        success, frame = video_capture.read()
-        if not success:
-            break
-        else:
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+server = GstRtspServer.RTSPServer()
+server.set_address("0.0.0.0")
+server.set_service("8554")
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+mounts = server.get_mount_points()
 
-if __name__ == '__main__':
-    app.run(host='10.0.0.2', port=9100)
+factory = GstRtspServer.RTSPMediaFactory()
+factory.set_launch(
+    "( v4l2src device=/dev/video0 ! "
+    "videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! "
+    "x264enc tune=zerolatency speed-preset=ultrafast bitrate=800 key-int-max=30 ! "
+    "rtph264pay name=pay0 pt=96 )"
+)
+
+factory.set_shared(True)
+
+mounts.add_factory("/stream", factory)
+server.attach(None)
+
+print("RTSP activo en rtsp://<IP>:8554/stream")
+GLib.MainLoop().run()
