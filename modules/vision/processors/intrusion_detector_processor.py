@@ -4,171 +4,145 @@ import cv2
 import csv
 from datetime import datetime
 import os
+from ultralytics import YOLO
+import numpy as np
 
 
 class IntrusionDetectorProcessor(BaseProcessor):
-    """
-    Procesador que detecta intrusos en zonas restringidas
-    """
+    """Detector de intrusiones con YOLO11s y boxes"""
 
     PROCESSOR_ID = 2
     PROCESSOR_LABEL = "Detector de Intrusos"
-    PROCESSOR_DESCRIPTION = "Monitorea áreas restringidas y detecta personas no autorizadas"
+    PROCESSOR_DESCRIPTION = "Detecta personas en zonas restringidas"
 
     def __init__(self, cam_id):
         super().__init__(cam_id)
-
-        # Configurar CSV
         os.makedirs('data', exist_ok=True)
         self.csv_file = f"data/intrusion_{cam_id}_{datetime.now().strftime('%Y-%m-%d')}.csv"
         self._init_csv()
 
-        # Zona restringida (centro del frame)
+        # Cargar YOLO
+        try:
+            model_path = "models/yolo11s.pt"
+            self.model = YOLO(model_path) if os.path.exists(model_path) else YOLO('yolov8n.pt')
+            self.model.conf, self.model.iou = 0.40, 0.45
+            print(f"✅ Modelo cargado para Intrusion Detector")
+        except Exception as e:
+            print(f"❌ Error cargando YOLO: {e}")
+            self.model = None
+
+        self.zone_defined = False
         self.restricted_zone = None
-
-        # Background subtractor
-        self.background_subtractor = cv2.createBackgroundSubtractorMOG2(
-            history=500,
-            varThreshold=32,
-            detectShadows=True
-        )
-
-        self.intrusion_detected = False
-        self.frames_with_intrusion = 0
-        self.last_alert_time = None
+        self.intrusions_today = 0
+        self.current_intruders = 0
+        self.frames_since_save = 0
 
     def _init_csv(self):
-        """Inicializa archivo CSV"""
         if not os.path.exists(self.csv_file):
             with open(self.csv_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['timestamp', 'intrusion_detected', 'confidence', 'zone'])
+                writer.writerow(['timestamp', 'person_count', 'intrusions_today', 'alert_level'])
+
+    def _define_zone(self, width, height):
+        margin_x, margin_y = int(width * 0.25), int(height * 0.25)
+        self.restricted_zone = np.array([
+            [margin_x, margin_y],
+            [width - margin_x, margin_y],
+            [width - margin_x, height - margin_y],
+            [margin_x, height - margin_y]
+        ], dtype=np.int32)
+        self.zone_defined = True
 
     def process_frame(self, frame):
-        """
-        Detecta intrusiones en zona restringida
-        IMPORTANTE: Dibuja la zona y las detecciones
-        """
         self.increment_frame_count()
         processed_frame = frame.copy()
-
         h, w = frame.shape[:2]
 
-        # Definir zona restringida (centro del frame) en primer frame
-        if self.restricted_zone is None:
-            zone_w = w // 3
-            zone_h = h // 3
-            zone_x = (w - zone_w) // 2
-            zone_y = (h - zone_h) // 2
-            self.restricted_zone = (zone_x, zone_y, zone_w, zone_h)
+        if not self.zone_defined:
+            self._define_zone(w, h)
 
-        x, y, zone_w, zone_h = self.restricted_zone
+        self.current_intruders = 0
 
-        # ============================================================
-        # DIBUJAR ZONA RESTRINGIDA
-        # ============================================================
-        color = (0, 0, 255) if self.intrusion_detected else (255, 165, 0)  # Rojo si intrusión, naranja si no
-        thickness = 4 if self.intrusion_detected else 2
+        # Detectar personas
+        if self.model:
+            try:
+                results = self.model(frame, verbose=False, classes=[0])
+                for result in results:
+                    for box in result.boxes:
+                        conf = float(box.conf[0])
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
-        # Rectángulo de la zona
-        cv2.rectangle(processed_frame, (x, y), (x + zone_w, y + zone_h), color, thickness)
+                        in_zone = cv2.pointPolygonTest(self.restricted_zone, (cx, cy), False) >= 0
 
-        # Rellenar zona con transparencia si hay intrusión
-        if self.intrusion_detected:
-            overlay = processed_frame.copy()
-            cv2.rectangle(overlay, (x, y), (x + zone_w, y + zone_h), (0, 0, 255), -1)
-            cv2.addWeighted(overlay, 0.2, processed_frame, 0.8, 0, processed_frame)
+                        if in_zone:
+                            self.current_intruders += 1
+                            # ✅ BOX ROJO - Intruso
+                            cv2.rectangle(processed_frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                            label = f"INTRUSO {conf:.0%}"
+                            cv2.rectangle(processed_frame, (x1, y1 - 25), (x1 + 150, y1), (0, 0, 255), -1)
+                            cv2.putText(processed_frame, label, (x1, y1 - 5),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-        # Etiqueta de la zona
-        cv2.putText(processed_frame, "ZONA RESTRINGIDA", (x + 10, y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                            # Alerta
+                            if self.frame_count % 30 == 0:
+                                self.generate_alert(
+                                    f"Intruso detectado en área restringida",
+                                    level="CRITICAL",
+                                    context={"cam_id": self.cam_id, "count": self.current_intruders}
+                                )
+                        else:
+                            # ✅ BOX VERDE - Fuera de zona
+                            cv2.rectangle(processed_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            cv2.putText(processed_frame, f"Persona {conf:.0%}", (x1, y1 - 5),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            except Exception as e:
+                print(f"❌ Error YOLO: {e}")
 
-        # Aplicar substracción de fondo
-        fg_mask = self.background_subtractor.apply(frame)
-
-        # Extraer ROI (región de interés) de la zona restringida
-        roi_mask = fg_mask[y:y + zone_h, x:x + zone_w]
-
-        # Contar píxeles blancos (movimiento) en la zona
-        white_pixels = cv2.countNonZero(roi_mask)
-        total_pixels = zone_w * zone_h
-        movement_percentage = (white_pixels / total_pixels) * 100
-
-        # Detectar intrusión si hay más del 5% de movimiento
-        if movement_percentage > 5:
-            self.intrusion_detected = True
-            self.frames_with_intrusion += 1
-
-            # Generar alerta después de 10 frames consecutivos
-            if self.frames_with_intrusion == 10:
-                current_time = datetime.now()
-
-                # Evitar spam de alertas (una cada 10 segundos)
-                if (self.last_alert_time is None or
-                        (current_time - self.last_alert_time).seconds > 10):
-                    self.generate_alert(
-                        "Intruso detectado en área restringida - Sector A3",
-                        level="CRITICAL",
-                        context={
-                            "zone": "Sector A3",
-                            "confidence": round(movement_percentage, 2)
-                        }
-                    )
-                    self.last_alert_time = current_time
-
-                    # Guardar en CSV
-                    self._save_to_csv(True, movement_percentage)
-        else:
-            if self.intrusion_detected:
-                # Fin de intrusión
-                self._save_to_csv(False, 0)
-
-            self.intrusion_detected = False
-            self.frames_with_intrusion = 0
-
-        # ============================================================
-        # DIBUJAR HUD (Heads-Up Display)
-        # ============================================================
-
-        # Fondo semi-transparente
+        # Dibujar zona
         overlay = processed_frame.copy()
-        cv2.rectangle(overlay, (0, 0), (500, 150), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.6, processed_frame, 0.4, 0, processed_frame)
+        color = (0, 0, 200) if self.current_intruders > 0 else (0, 100, 200)
+        pts = self.restricted_zone.reshape((-1, 1, 2))
+        cv2.fillPoly(overlay, [pts], color)
+        cv2.polylines(processed_frame, [pts], True, color, 3)
+        cv2.addWeighted(overlay, 0.3, processed_frame, 0.7, 0, processed_frame)
 
-        # Título
+        x, y = self.restricted_zone[0]
+        cv2.putText(processed_frame, "ZONA RESTRINGIDA", (x + 10, y + 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+        # HUD
+        cv2.rectangle(processed_frame, (0, 0), (350, 150), (0, 0, 0), -1)
         cv2.putText(processed_frame, "DETECTOR DE INTRUSOS", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
-        # Estado
-        status_text = "INTRUSION DETECTADA!" if self.intrusion_detected else "Sistema Activo"
-        status_color = (0, 0, 255) if self.intrusion_detected else (0, 255, 0)
-        cv2.putText(processed_frame, status_text, (10, 65),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
+        status_text = "ALERTA: INTRUSION" if self.current_intruders > 0 else "Sin intrusiones"
+        status_color = (0, 0, 255) if self.current_intruders > 0 else (0, 255, 0)
+        cv2.putText(processed_frame, status_text, (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
-        # Nivel de movimiento
-        cv2.putText(processed_frame, f"Movimiento: {movement_percentage:.1f}%", (10, 100),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(processed_frame, f"Intrusos: {self.current_intruders}", (10, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(processed_frame, datetime.now().strftime("%H:%M:%S"), (10, 140),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
 
-        # Timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cv2.putText(processed_frame, timestamp, (10, 130),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
-
-        # Indicador de alerta en la esquina
-        if self.intrusion_detected:
-            cv2.circle(processed_frame, (w - 30, 30), 20, (0, 0, 255), -1)
-            cv2.putText(processed_frame, "!", (w - 40, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 3)
+        # Guardar CSV
+        self.frames_since_save += 1
+        if self.frames_since_save >= 30:
+            self._save_to_csv()
+            self.frames_since_save = 0
+            if self.current_intruders > 0:
+                self.intrusions_today += 1
 
         return processed_frame
 
-    def _save_to_csv(self, intrusion, confidence):
-        """Guarda evento en CSV"""
+    def _save_to_csv(self):
+        alert_level = "CRITICAL" if self.current_intruders > 0 else "NORMAL"
         with open(self.csv_file, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
                 datetime.now().isoformat(),
-                intrusion,
-                round(confidence, 2),
-                "Sector A3"
+                self.current_intruders,
+                self.intrusions_today,
+                alert_level
             ])
