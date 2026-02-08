@@ -5,8 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Optimizacion de video con frames trabados">
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_38_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_40_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_43_[Changes]/shelved.patch" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modules/vision/processors/intrusion_detector_processor.py" beforeDir="false" afterPath="$PROJECT_DIR$/modules/vision/processors/intrusion_detector_processor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/TESTING.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/NixitoS.pt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/bestpersonas.pt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_full_integration.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_imports.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_socketio_client.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_vision.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
