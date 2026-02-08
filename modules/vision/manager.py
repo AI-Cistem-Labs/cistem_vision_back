@@ -138,47 +138,47 @@ class VisionManager:
 
     def _start_ffmpeg(self, cam_id, width, height, fps):
         """
-        ✅ SIN BUFFERING - Flujo directo
+        ✅ ULTRA LOW LATENCY - Mínimo delay
         """
         try:
             mediamtx_url = f"rtsp://localhost:8554/camera_{cam_id}_ai"
-
-            target_width = min(width, 1280)
-            target_height = min(height, 720)
 
             ffmpeg_cmd = [
                 'ffmpeg',
                 '-f', 'rawvideo',
                 '-vcodec', 'rawvideo',
                 '-pix_fmt', 'bgr24',
-                '-s', f'{target_width}x{target_height}',
-                '-r', '10',
-                '-re',  # ✅ NUEVO: Leer a velocidad real (evita acumulación)
+                '-s', f'{width}x{height}',
+                '-r', str(fps),
                 '-i', '-',
 
-                # ✅ ENCODING MÍNIMO
+                # ✅ ENCODING ULTRA RÁPIDO
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
                 '-tune', 'zerolatency',
                 '-profile:v', 'baseline',
                 '-pix_fmt', 'yuv420p',
 
-                # ✅ GOP CORTO
+                # ✅ KEYFRAME CADA 10 FRAMES (1 segundo)
                 '-g', '10',
+                '-keyint_min', '10',
                 '-sc_threshold', '0',
 
-                # ✅ BITRATE BAJO
-                '-b:v', '800k',  # ✅ Reducido de 1500k
-                '-maxrate', '800k',
-                '-bufsize', '400k',  # ✅ Buffer mínimo
+                # ✅ BITRATE MUY BAJO (menos calidad, menos delay)
+                '-b:v', '600k',  # ✅ Reducido de 2000k
+                '-maxrate', '700k',
+                '-bufsize', '300k',  # ✅ Buffer mínimo
 
-                # ✅ THREADS
-                '-threads', '1',  # ✅ Solo 1 thread por cámara
+                # ✅ 1 THREAD (menos latencia)
+                '-threads', '1',
 
-                # ✅ RTSP DIRECTO
+                # ✅ NO BUFFERING
+                '-flags', 'low_delay',
+                '-fflags', 'nobuffer',
+
+                # ✅ RTSP
                 '-f', 'rtsp',
                 '-rtsp_transport', 'tcp',
-                '-flush_packets', '1',  # ✅ NUEVO: flush inmediato
 
                 mediamtx_url
             ]
@@ -188,154 +188,193 @@ class VisionManager:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                bufsize=0
+                bufsize=0  # ✅ Sin buffer en pipe
             )
 
-            print(f"✅ FFmpeg iniciado: {cam_id} @ {target_width}x{target_height} 10fps")
+            print(f"✅ FFmpeg LOW LATENCY: {cam_id}")
             return process
 
         except Exception as e:
-            print(f"❌ Error FFmpeg: {str(e)}")
+            print(f"❌ FFmpeg error: {e}")
             return None
+
+    def _draw_detections(self, frame, processor):
+        """
+        ✅ Dibuja ROI y boxes en el frame
+        Usa las detecciones guardadas en el processor
+        """
+        if not processor.zone_defined:
+            return
+
+        # ✅ ROI
+        roi_color = (0, 0, 255) if processor.current_intruders > 0 else (0, 255, 0)
+        cv2.polylines(
+            frame,
+            [processor.restricted_zone.reshape((-1, 1, 2))],
+            True,
+            roi_color,
+            3
+        )
+
+        # ✅ BOXES
+        for box_data in processor._last_boxes:
+            x1, y1, x2, y2 = box_data['bbox']
+            in_zone = box_data['in_zone']
+
+            color = (0, 0, 255) if in_zone else (0, 255, 0)
+            thickness = 4 if in_zone else 2
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+
+        # ✅ ALERTA
+        if processor.current_intruders > 0:
+            cv2.putText(
+                frame,
+                f"ALERTA: {processor.current_intruders}",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 0, 255),
+                3
+            )
+
     def _camera_loop(self, camera_data):
         """
-        ✅ ULTRA-OPTIMIZADO: Procesa solo 10 FPS y elimina buffering
+        ✅ CRÍTICO: Mantener dimensiones consistentes
         """
         cam_id = camera_data['cam_id']
         rtsp_url = camera_data['rtsp_url']
         processor = camera_data['processor']
 
-        print(f"🔌 Conectando a RTSP: {rtsp_url}")
+        print(f"🔌 Conectando: {rtsp_url}")
         capture = cv2.VideoCapture(rtsp_url)
 
         if not capture.isOpened():
-            print(f"❌ Error conectando a RTSP de cámara {cam_id}")
+            print(f"❌ Error RTSP {cam_id}")
             system_logger.rtsp_connection_failed(cam_id)
             return
 
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         camera_data['capture'] = capture
         system_logger.camera_started(cam_id)
 
-        # ✅ CONFIGURACIÓN OPTIMIZADA
-        TARGET_FPS = 10
-        FRAME_INTERVAL = 1.0 / TARGET_FPS  # 0.1 segundos entre frames
+        # ✅ FORZAR dimensiones fijas
+        FIXED_WIDTH = 1280
+        FIXED_HEIGHT = 720
+        FIXED_FPS = 10
 
-        # ✅ Resolución reducida
-        PROCESS_WIDTH = 1280
-        PROCESS_HEIGHT = 720
-
-        original_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
-        original_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
-
-        # ✅ Configurar buffer mínimo en la captura
-        capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        # ✅ Iniciar FFmpeg
-        ffmpeg_process = self._start_ffmpeg(cam_id, PROCESS_WIDTH, PROCESS_HEIGHT, TARGET_FPS)
+        ffmpeg_process = self._start_ffmpeg(cam_id, FIXED_WIDTH, FIXED_HEIGHT, FIXED_FPS)
         camera_data['ffmpeg_process'] = ffmpeg_process
 
-        # ✅ VARIABLES DE CONTROL
-        frame_count = 0
         processed_count = 0
         error_count = 0
-        last_process_time = 0  # ✅ AQUÍ ESTÁ
         last_fps_check = time.time()
 
-        print(f"⚡ Cámara {cam_id} configurada: {PROCESS_WIDTH}x{PROCESS_HEIGHT} @ {TARGET_FPS} FPS")
+        print(f"⚡ Cam {cam_id}: {FIXED_WIDTH}x{FIXED_HEIGHT} @ {FIXED_FPS}fps")
 
         while not camera_data['stop_flag']:
             try:
-                current_time = time.time()
-
-                # ✅ CONTROL DE FPS: Solo procesar cada FRAME_INTERVAL
-                if (current_time - last_process_time) < FRAME_INTERVAL:
-                    # Vaciar buffer mientras esperamos
-                    capture.grab()
-                    time.sleep(0.01)
-                    continue
-
+                # ✅ Leer frame
                 ret, frame = capture.read()
 
                 if not ret:
                     error_count += 1
-
-                    if error_count > 10:
-                        print(f"❌ Reconectando cámara {cam_id}...")
-                        system_logger.rtsp_connection_failed(cam_id)
-
+                    if error_count > 30:
+                        print(f"❌ Reconectando {cam_id}...")
                         capture.release()
                         time.sleep(2)
                         capture = cv2.VideoCapture(rtsp_url)
-
                         if capture.isOpened():
                             capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                             camera_data['capture'] = capture
                             error_count = 0
-                            system_logger.rtsp_connection_restored(cam_id)
                         else:
-                            print(f"❌ No se pudo reconectar cámara {cam_id}")
                             break
-
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                     continue
 
                 error_count = 0
-                frame_count += 1
 
-                # ✅ REDIMENSIONAR si es necesario
-                if original_width > PROCESS_WIDTH:
-                    frame = cv2.resize(
-                        frame,
-                        (PROCESS_WIDTH, PROCESS_HEIGHT),
-                        interpolation=cv2.INTER_LINEAR
-                    )
+                # ✅ RESIZE OBLIGATORIO a dimensiones fijas
+                if frame.shape[1] != FIXED_WIDTH or frame.shape[0] != FIXED_HEIGHT:
+                    frame = cv2.resize(frame, (FIXED_WIDTH, FIXED_HEIGHT))
 
-                # Guardar frame raw
                 camera_data['current_frame'] = frame.copy()
 
-                # ✅ PROCESAR CON IA
+                # ✅ Detección (NO modifica frame)
                 try:
-                    processed_frame = processor.process_frame(frame)
-                    camera_data['processed_frame'] = processed_frame
-                    processed_count += 1
+                    processor.process_frame(frame)
                 except Exception as e:
-                    print(f"❌ Error en procesador {cam_id}: {str(e)}")
-                    system_logger.processor_error(cam_id, str(e))
-                    processed_frame = frame.copy()
-                    camera_data['processed_frame'] = processed_frame
+                    print(f"❌ Processor: {e}")
 
-                # ✅ ENVIAR A FFMPEG
+                # ✅ Copiar para dibujar
+                display_frame = frame.copy()
+
+                # ✅ Dibujar detecciones
+                if processor.zone_defined:
+                    # ROI
+                    roi_color = (0, 0, 255) if processor.current_intruders > 0 else (0, 255, 0)
+                    cv2.polylines(
+                        display_frame,
+                        [processor.restricted_zone.reshape((-1, 1, 2))],
+                        True,
+                        roi_color,
+                        3
+                    )
+
+                    # BOXES
+                    for box_data in processor._last_boxes:
+                        x1, y1, x2, y2 = box_data['bbox']
+                        in_zone = box_data['in_zone']
+                        color = (0, 0, 255) if in_zone else (0, 255, 0)
+                        thickness = 4 if in_zone else 2
+                        cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, thickness)
+
+                    # ALERTA
+                    if processor.current_intruders > 0:
+                        cv2.putText(
+                            display_frame,
+                            f"ALERTA: {processor.current_intruders}",
+                            (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            3
+                        )
+
+                camera_data['processed_frame'] = display_frame
+
+                # ✅ VERIFICAR dimensiones antes de enviar
+                if display_frame.shape[1] != FIXED_WIDTH or display_frame.shape[0] != FIXED_HEIGHT:
+                    print(f"⚠️ Dimensión incorrecta: {display_frame.shape}, resizing...")
+                    display_frame = cv2.resize(display_frame, (FIXED_WIDTH, FIXED_HEIGHT))
+
+                # ✅ Enviar a FFmpeg
                 if ffmpeg_process and ffmpeg_process.poll() is None:
                     try:
-                        ffmpeg_process.stdin.write(processed_frame.tobytes())
+                        ffmpeg_process.stdin.write(display_frame.tobytes())
+                        processed_count += 1
                     except BrokenPipeError:
-                        print(f"⚠️ FFmpeg pipe roto, reiniciando para {cam_id}")
-                        ffmpeg_process = self._start_ffmpeg(cam_id, PROCESS_WIDTH, PROCESS_HEIGHT, TARGET_FPS)
+                        ffmpeg_process = self._start_ffmpeg(cam_id, FIXED_WIDTH, FIXED_HEIGHT, FIXED_FPS)
                         camera_data['ffmpeg_process'] = ffmpeg_process
                     except Exception as e:
-                        print(f"❌ Error escribiendo a FFmpeg: {str(e)}")
+                        pass
 
-                # ✅ ACTUALIZAR TIMESTAMP
-                last_process_time = current_time
-
-                # ✅ MONITOREO cada 10 segundos
+                # Stats
+                current_time = time.time()
                 if current_time - last_fps_check >= 10.0:
                     actual_fps = processed_count / 10.0
                     processed_count = 0
                     last_fps_check = current_time
-                    print(f"📊 Cam {cam_id}: {actual_fps:.1f} FPS procesados")
-
-                    if actual_fps < 8:
-                        system_logger.low_fps_warning(cam_id, int(actual_fps))
+                    print(f"📊 Cam {cam_id}: {actual_fps:.1f} FPS")
 
             except Exception as e:
-                print(f"❌ Error inesperado en loop {cam_id}: {str(e)}")
-                system_logger.log(cam_id, f"Error en loop: {str(e)}", "ERROR")
+                print(f"❌ Loop error: {e}")
+                import traceback
+                traceback.print_exc()
                 time.sleep(0.5)
 
-        # ✅ LIMPIEZA
+        # LIMPIEZA
         capture.release()
-
         if ffmpeg_process:
             try:
                 ffmpeg_process.stdin.close()
@@ -347,5 +386,5 @@ class VisionManager:
                 except:
                     pass
 
-        print(f"🛑 Cámara {cam_id} detenida ({frame_count} frames totales, {processed_count} procesados)")
+        print(f"🛑 Cam {cam_id} detenida")
         system_logger.camera_stopped(cam_id)
