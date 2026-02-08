@@ -9,7 +9,6 @@ from ultralytics import YOLO
 import numpy as np
 import torch
 
-
 class IntrusionDetectorProcessor(BaseProcessor):
     """
     Detector INFALIBLE + CALIDAD MEJORADA

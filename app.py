@@ -5,6 +5,10 @@ from extensions import socketio
 from dotenv import load_dotenv
 import os
 
+# CRÍTICO: Parchear antes de cualquier import
+import eventlet
+eventlet.monkey_patch()
+
 # Cargar variables de entorno
 load_dotenv()
 
@@ -25,7 +29,7 @@ CORS(app, resources={
 socketio.init_app(
     app,
     cors_allowed_origins="*",
-    async_mode='threading',
+    async_mode='eventlet',  # Explícito
     ping_timeout=60,
     ping_interval=25
 )
@@ -85,15 +89,15 @@ def health():
 
 
 # ============================================================
-# NUEVA RUTA: SERVIR MAPAS
+# RUTA: SERVIR MAPAS
 # ============================================================
-@app.route('/home/nix/PycharmProjects/cistem_vision_back/static/maps/mapanix.jpeg')
+@app.route('/static/maps/<path:filename>')
 def serve_map(filename):
     """
     Sirve imágenes de mapas desde static/maps/
 
     Ejemplo de uso:
-    http://localhost:5000/static/maps/laboratorio_principal.png
+    http://localhost:5000/static/maps/mapanix.jpeg
     """
     try:
         return send_from_directory('static/maps', filename)
@@ -114,7 +118,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print(f"🚀 Servidor iniciando en puerto {PORT}")
     print(f"🐛 Modo debug: {DEBUG}")
-    print(f"📡 Protocolo: SocketIO")
+    print(f"📡 Protocolo: SocketIO (eventlet)")
     print("=" * 60)
     print()
 
@@ -145,12 +149,11 @@ if __name__ == '__main__':
     print("=" * 60)
     print()
 
-    # Iniciar servidor
+    # Iniciar servidor con eventlet
     socketio.run(
         app,
         host='0.0.0.0',
         port=PORT,
         debug=DEBUG,
-        use_reloader=False,
-        allow_unsafe_werkzeug=True
+        use_reloader=False
     )
