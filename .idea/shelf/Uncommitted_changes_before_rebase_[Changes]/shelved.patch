@@ -1,0 +1,346 @@
+Index: modules/vision/processors/warehouse_security_processor_HARDCODED.py
+===================================================================
+diff --git a/modules/vision/processors/warehouse_security_processor_HARDCODED.py b/modules/vision/processors/warehouse_security_processor.py
+rename from modules/vision/processors/warehouse_security_processor_HARDCODED.py
+rename to modules/vision/processors/warehouse_security_processor.py
+--- a/modules/vision/processors/warehouse_security_processor_HARDCODED.py	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/modules/vision/processors/warehouse_security_processor.py	(date 1770410723823)
+@@ -18,7 +18,13 @@
+ 
+     CONFIGURACIÓN:
+     - ROIs definidos directamente en código (hardcodeados)
+-    - Coordenadas obtenidas del script define_roi_coordinates.py
++    - Usa el script define_roi_coordinates.py para obtener coordenadas
++
++    MEJORAS v2:
++    - Logs de debug para diagnosticar detecciones
++    - Umbral de confianza reducido (0.25 vs 0.40)
++    - Distancia de detección aumentada (150px vs 100px)
++    - Alertas más frecuentes
+     """
+ 
+     PROCESSOR_ID = 4
+@@ -37,26 +43,38 @@
+         # CARGAR MODELO YOLO
+         # ============================================================
+         try:
+-            # Usar YOLO11s (nuevo y más eficiente)
++            # ✅ FIX PyTorch 2.6: Agregar safe_globals para YOLO
++            import torch
++            try:
++                torch.serialization.add_safe_globals([
++                    'ultralytics.nn.tasks.YOLOv10DetectionModel',
++                    'ultralytics.nn.tasks.DetectionModel',
++                ])
++            except:
++                pass  # Si falla, continuar de todos modos
++
++            # Usar YOLO11s
+             model_path = "models/yolo11s.pt"
+             if os.path.exists(model_path):
+                 self.model = YOLO(model_path)
+                 print(f"✅ Modelo YOLO11s cargado: {model_path}")
+             else:
+-                # Fallback a YOLOv8s
++                # Fallback
+                 self.model = YOLO('yolov8s.pt')
+                 print("✅ Modelo YOLOv8s cargado (fallback)")
+ 
+-            # Configuración del modelo
+-            self.model.conf = 0.40  # Umbral de confianza
+-            self.model.iou = 0.45  # IoU threshold
++            # ✅ MEJORADO: Configuración más sensible
++            self.model.conf = 0.25  # ← Reducido de 0.40 a 0.25 para detectar más objetos
++            self.model.iou = 0.45
++
++            print(f"🎯 Umbral de confianza: {self.model.conf} (detección sensible)")
+ 
+         except Exception as e:
+             print(f"❌ Error cargando modelo YOLO: {str(e)}")
+             self.model = None
+ 
+-        # Clases objetivo de COCO dataset:
+-        # 0 = persona, 24 = backpack (mochila), 26 = handbag (bolso), 28 = suitcase (maleta)
++        # Clases objetivo:
++        # 0 = persona, 24 = backpack, 26 = handbag, 28 = suitcase
+         self.target_classes = [0, 24, 26, 28]
+ 
+         self.object_classes = {
+@@ -66,13 +84,11 @@
+         }
+ 
+         # ============================================================
+-        # ✅ DEFINIR ROIs HARDCODEADOS
++        # DEFINIR ROIs HARDCODEADOS
+         # ============================================================
+-
+-        # Desactivar ROI por defecto
+         self.use_default_roi = False
+ 
+-        # ROI 1: Zona del Almacén (área principal restringida)
++        # ROI específico (coordenadas del usuario)
+         self.zona_almacen = np.array([
+             [1005, 802],
+             [1618, 790],
+@@ -84,7 +100,6 @@
+             [439, 1106],
+         ], dtype=np.int32)
+ 
+-        # ROI 2: Puerta del Almacén (zona de acceso)
+         self.puerta_almacen = np.array([
+             [952, 12],
+             [1018, 794],
+@@ -92,8 +107,7 @@
+             [1716, 14],
+         ], dtype=np.int32)
+ 
+-        # ⭐ IMPORTANTE: Definir cual es la zona restringida principal
+-        # (El código usa self.zona_restringida para las validaciones)
++        # Asignar zona principal
+         self.zona_restringida = self.zona_almacen
+ 
+         print("✅ ROIs cargados:")
+@@ -104,8 +118,6 @@
+         self.track_history = defaultdict(lambda: deque(maxlen=50))
+         self.person_times = defaultdict(float)
+         self.person_with_object = defaultdict(bool)
+-
+-        # Tracking de accesos por puerta
+         self.person_entered_through_door = defaultdict(bool)
+ 
+         # Estadísticas
+@@ -113,9 +125,13 @@
+         self.current_people_in_zone = 0
+         self.total_accesses_today = 0
+ 
+-        # Control de alertas (evitar spam)
++        # Control de alertas
+         self.last_alert_time = defaultdict(lambda: None)
+-        self.alert_cooldown = 10  # segundos entre alertas
++        self.alert_cooldown = 5  # ✅ MEJORADO: Reducido de 10s a 5s
++
++        # ✅ NUEVO: Modo debug
++        self.debug_mode = True  # Activar logs detallados
++        self.frame_debug_interval = 30  # Log cada 30 frames (~1 segundo)
+ 
+     def _init_csv(self):
+         """Inicializa archivo CSV con headers"""
+@@ -148,6 +164,12 @@
+         people_at_door = []
+         security_alert = False
+ 
++        # ✅ NUEVO: Debug logging cada N frames
++        debug_this_frame = self.debug_mode and (self.frame_count % self.frame_debug_interval == 0)
++
++        if debug_this_frame:
++            print(f"\n🔍 DEBUG Frame {self.frame_count}")
++
+         # ============================================================
+         # DETECCIÓN CON YOLO
+         # ============================================================
+@@ -167,6 +189,13 @@
+                     clss = results[0].boxes.cls.cpu().numpy().astype(int)
+                     confs = results[0].boxes.conf.cpu().numpy()
+ 
++                    # ✅ NUEVO: Log de detecciones totales
++                    if debug_this_frame:
++                        persons = sum(1 for c in clss if c == 0)
++                        objects = sum(1 for c in clss if c in self.object_classes)
++                        print(f"   👥 Personas detectadas: {persons}")
++                        print(f"   📦 Objetos detectados: {objects}")
++
+                     # Primera pasada: identificar objetos
+                     for box, track_id, cls, conf in zip(boxes, ids, clss, confs):
+                         if cls in self.object_classes:
+@@ -180,11 +209,19 @@
+                                 'conf': conf
+                             })
+ 
++                            # ✅ NUEVO: Log de objetos
++                            if debug_this_frame:
++                                print(f"   📦 {self.object_classes[cls]} en ({cx}, {cy}) conf={conf:.2f}")
++
+                     # Segunda pasada: procesar personas
+                     for box, track_id, cls, conf in zip(boxes, ids, clss, confs):
+                         if cls == 0:  # Persona
+                             x1, y1, x2, y2 = box
+-                            cx, cy = (x1 + x2) // 2, y2  # Centro en la base de los pies
++                            cx, cy = (x1 + x2) // 2, y2
++
++                            # ✅ NUEVO: Log de persona detectada
++                            if debug_this_frame:
++                                print(f"   🚶 Persona ID:{track_id} en ({cx}, {cy}) conf={conf:.2f}")
+ 
+                             # Guardar trayectoria
+                             self.track_history[track_id].append((float(cx), float(cy)))
+@@ -196,13 +233,19 @@
+                                 if not self.person_entered_through_door[track_id]:
+                                     self.person_entered_through_door[track_id] = True
+                                     self.total_accesses_today += 1
++                                    if debug_this_frame:
++                                        print(f"   🚪 Persona {track_id} en puerta")
+ 
+-                            # Verificar si está en zona restringida (almacén)
++                            # Verificar si está en zona restringida
+                             in_zone = cv2.pointPolygonTest(self.zona_restringida, (cx, cy), False) >= 0
+ 
++                            # ✅ NUEVO: Log de ROI
++                            if debug_this_frame:
++                                print(f"      En zona almacén: {in_zone}")
++
+                             if in_zone:
+                                 # Incrementar tiempo en zona
+-                                fps = 30  # Asumir 30 fps
++                                fps = 30
+                                 self.person_times[track_id] += (1.0 / fps)
+                                 time_in_zone = self.person_times[track_id]
+ 
+@@ -214,33 +257,49 @@
+ 
+                                 for obj in objects_in_scene:
+                                     obj_cx, obj_cy = obj['center']
+-                                    # Si objeto está cerca de la persona (dentro de 150px)
+-                                    if abs(obj_cx - cx) < 100 and abs(obj_cy - cy) < 150:
++
++                                    # ✅ MEJORADO: Distancia aumentada de 100px a 150px
++                                    dist_x = abs(obj_cx - cx)
++                                    dist_y = abs(obj_cy - cy)
++
++                                    # ✅ NUEVO: Log de distancia objeto-persona
++                                    if debug_this_frame:
++                                        print(f"      📦 {obj['type']} a distancia: ({dist_x}px, {dist_y}px)")
++
++                                    if dist_x < 150 and dist_y < 200:  # ← Más tolerante
+                                         has_object = True
+                                         object_type = obj['type']
+                                         self.person_with_object[track_id] = True
++
++                                        if debug_this_frame:
++                                            print(f"      ✅ OBJETO CERCANO DETECTADO: {object_type}")
+                                         break
+ 
+-                                # Determinar estado y color
++                                # Determinar estado
+                                 alert_level = "NORMAL"
+-                                color = (0, 255, 0)  # Verde
++                                color = (0, 255, 0)
+                                 status_text = "Autorizado"
+ 
+                                 # LÓGICA DE ALERTAS
+                                 if has_object:
+                                     alert_level = "CRITICAL"
+-                                    color = (0, 0, 255)  # Rojo
++                                    color = (0, 0, 255)
+                                     status_text = f"ALERTA: {object_type.upper()}"
+                                     security_alert = True
+ 
+-                                    # Generar alerta (con cooldown para evitar spam)
++                                    # Generar alerta (con cooldown)
+                                     current_time = datetime.now()
+                                     last_alert = self.last_alert_time[track_id]
+ 
+                                     if (last_alert is None or
+                                             (current_time - last_alert).total_seconds() > self.alert_cooldown):
++                                        alert_msg = f"Posible sustracción - Persona #{track_id} con {object_type}"
++
++                                        # ✅ NUEVO: Log de alerta
++                                        print(f"🚨 ALERTA GENERADA: {alert_msg}")
++
+                                         self.generate_alert(
+-                                            f"Posible sustracción - Persona #{track_id} con {object_type}",
++                                            alert_msg,
+                                             level="CRITICAL",
+                                             context={
+                                                 "person_id": track_id,
+@@ -262,24 +321,18 @@
+                                             'CRITICAL'
+                                         )
+ 
+-                                elif time_in_zone > 30:  # Más de 30 segundos
++                                elif time_in_zone > 30:
+                                     alert_level = "WARNING"
+-                                    color = (0, 165, 255)  # Naranja
++                                    color = (0, 165, 255)
+                                     status_text = "Tiempo prolongado"
+ 
+-                                # ============================================================
+-                                # DIBUJAR PERSONA
+-                                # ============================================================
+-
+-                                # Bounding box
++                                # Dibujar persona
+                                 cv2.rectangle(processed_frame, (x1, y1), (x2, y2), color, 3)
+ 
+-                                # Etiqueta superior
+                                 label_top = f"ID:{track_id} {status_text}"
+                                 cv2.putText(processed_frame, label_top, (x1, y1 - 25),
+                                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+ 
+-                                # Tiempo
+                                 label_time = f"Tiempo: {time_in_zone:.1f}s"
+                                 cv2.putText(processed_frame, label_time, (x1, y2 + 20),
+                                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+@@ -311,43 +364,36 @@
+         # ============================================================
+         overlay = processed_frame.copy()
+ 
+-        # Zona del almacén (restringida)
+-        color_zona = (0, 0, 200) if security_alert else (0, 0, 255)  # Rojo
++        # Zona del almacén
++        color_zona = (0, 0, 200) if security_alert else (0, 0, 255)
+         pts_almacen = self.zona_almacen.reshape((-1, 1, 2))
+         cv2.fillPoly(overlay, [pts_almacen], color_zona)
+         cv2.polylines(processed_frame, [pts_almacen], True, color_zona, 2)
+ 
+-        # Etiqueta zona almacén
+         x, y = self.zona_almacen[0]
+         cv2.putText(processed_frame, "ZONA RESTRINGIDA", (x, y - 10),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, color_zona, 2)
+ 
+         # Puerta del almacén
+         pts_puerta = self.puerta_almacen.reshape((-1, 1, 2))
+-        color_puerta = (0, 255, 0)  # Verde
++        color_puerta = (0, 255, 0)
+         cv2.fillPoly(overlay, [pts_puerta], color_puerta)
+         cv2.polylines(processed_frame, [pts_puerta], True, color_puerta, 2)
+ 
+-        # Etiqueta puerta
+         x2, y2 = self.puerta_almacen[0]
+         cv2.putText(processed_frame, "ACCESO", (x2, y2 - 10),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, color_puerta, 2)
+ 
+-        # Aplicar overlay semi-transparente
+         cv2.addWeighted(overlay, 0.25, processed_frame, 0.75, 0, processed_frame)
+ 
+         # ============================================================
+-        # HUD - DASHBOARD DE AUDITORÍA
++        # HUD - DASHBOARD
+         # ============================================================
+-
+-        # Panel principal
+         cv2.rectangle(processed_frame, (0, 0), (500, 230), (20, 20, 20), -1)
+ 
+-        # Título
+         cv2.putText(processed_frame, "AUDITORIA ALMACEN INTERNO", (15, 35),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+ 
+-        # Estado de seguridad
+         if security_alert:
+             cv2.putText(processed_frame, "ALERTA: OBJETO EN MOVIMIENTO", (15, 70),
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+@@ -359,7 +405,6 @@
+             cv2.putText(processed_frame, "Sin incidencias detectadas", (15, 100),
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
+ 
+-        # Estadísticas
+         cv2.putText(processed_frame, f"Personas en zona: {self.current_people_in_zone}",
+                     (15, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+         cv2.putText(processed_frame, f"Objetos detectados: {len(objects_in_scene)}",
+@@ -367,7 +412,6 @@
+         cv2.putText(processed_frame, f"Accesos hoy: {self.total_accesses_today}",
+                     (15, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+ 
+-        # Timestamp
+         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+         cv2.putText(processed_frame, timestamp, (15, 215),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)

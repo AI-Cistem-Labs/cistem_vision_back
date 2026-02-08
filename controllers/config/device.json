@@ -1,0 +1,13 @@
+{
+  "device_id": 101,
+  "device_label": "Dispositivo-01",
+  "device_type": "jetson_orin",
+  "location": {
+    "location_id": 1,
+    "label": "Ubicaci\u00f3n Principal",
+    "description": "",
+    "mapImageUrl": "",
+    "isActive": true
+  },
+  "cameras": []
+}

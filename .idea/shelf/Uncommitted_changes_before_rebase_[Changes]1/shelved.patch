@@ -1,0 +1,1167 @@
+Index: modules/vision/manager.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># modules/vision/manager.py\nimport threading\nimport time\nfrom config.config_manager import device_config\nfrom modules.vision.processors import get_processor_class\nfrom modules.analytics.specialists.system_logger import system_logger\nfrom modules.analytics.specialists.alerts_engine import alerts_engine\nimport cv2\n\n\nclass VisionManager:\n    \"\"\"\n    Singleton que gestiona todas las cámaras y sus procesadores\n    \"\"\"\n    _instance = None\n\n    def __new__(cls):\n        if cls._instance is None:\n            cls._instance = super().__new__(cls)\n            cls._instance._initialized = False\n        return cls._instance\n\n    def __init__(self):\n        if self._initialized:\n            return\n\n        # Diccionario de cámaras activas: {cam_id: camera_thread_data}\n        self.active_cameras = {}\n\n        # Lock para thread-safety\n        self.lock = threading.Lock()\n\n        self._initialized = True\n        print(\"✅ VisionManager inicializado\")\n\n    def start_camera(self, cam_id, processor_id=None):\n        \"\"\"\n        Inicia captura y procesamiento de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n            processor_id: ID del procesador (si None, usa el activo en config)\n        \"\"\"\n        with self.lock:\n            # Verificar si ya está activa\n            if cam_id in self.active_cameras:\n                print(f\"⚠\uFE0F Cámara {cam_id} ya está activa\")\n                return False\n\n            # Obtener configuración de la cámara\n            camera = device_config.get_camera(cam_id)\n            if not camera:\n                print(f\"❌ Cámara {cam_id} no encontrada en configuración\")\n                return False\n\n            # Determinar procesador a usar\n            if processor_id is None:\n                processor_id = camera.get('active_processor')\n\n            if processor_id is None:\n                print(f\"❌ No hay procesador asignado a cámara {cam_id}\")\n                return False\n\n            # Obtener clase del procesador\n            ProcessorClass = get_processor_class(processor_id)\n            if not ProcessorClass:\n                print(f\"❌ Procesador {processor_id} no encontrado\")\n                return False\n\n            # Obtener URL RTSP\n            rtsp_url = device_config.get_rtsp_url(cam_id)\n            if not rtsp_url:\n                print(f\"❌ URL RTSP no configurada para cámara {cam_id}\")\n                system_logger.log(cam_id, \"URL RTSP no configurada\", \"ERROR\")\n                return False\n\n            # Crear control de thread\n            camera_data = {\n                'cam_id': cam_id,\n                'rtsp_url': rtsp_url,\n                'processor_id': processor_id,\n                'processor': ProcessorClass(cam_id),\n                'stop_flag': False,\n                'current_frame': None,\n                'processed_frame': None,\n                'thread': None,\n                'capture': None\n            }\n\n            # Crear y arrancar thread\n            thread = threading.Thread(\n                target=self._camera_loop,\n                args=(camera_data,),\n                daemon=True\n            )\n            camera_data['thread'] = thread\n            thread.start()\n\n            # Registrar en diccionario\n            self.active_cameras[cam_id] = camera_data\n\n            print(f\"✅ Cámara {cam_id} iniciada con procesador {processor_id}\")\n            return True\n\n    def stop_camera(self, cam_id):\n        \"\"\"\n        Detiene captura y procesamiento de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n        \"\"\"\n        with self.lock:\n            if cam_id not in self.active_cameras:\n                print(f\"⚠\uFE0F Cámara {cam_id} no está activa\")\n                return False\n\n            # Señalizar detención\n            camera_data = self.active_cameras[cam_id]\n            camera_data['stop_flag'] = True\n\n            # Esperar a que termine el thread\n            if camera_data['thread'].is_alive():\n                camera_data['thread'].join(timeout=2.0)\n\n            # Liberar recursos\n            if camera_data['capture']:\n                camera_data['capture'].release()\n\n            # Eliminar del diccionario\n            del self.active_cameras[cam_id]\n\n            print(f\"✅ Cámara {cam_id} detenida\")\n            return True\n\n    def get_processed_frame(self, cam_id):\n        \"\"\"\n        Obtiene el último frame procesado de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n\n        Returns:\n            numpy.ndarray: Frame procesado o None\n        \"\"\"\n        if cam_id not in self.active_cameras:\n            return None\n\n        return self.active_cameras[cam_id].get('processed_frame')\n\n    def get_raw_frame(self, cam_id):\n        \"\"\"\n        Obtiene el último frame sin procesar de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n\n        Returns:\n            numpy.ndarray: Frame raw o None\n        \"\"\"\n        if cam_id not in self.active_cameras:\n            return None\n\n        return self.active_cameras[cam_id].get('current_frame')\n\n    def is_camera_active(self, cam_id):\n        \"\"\"Verifica si una cámara está activa\"\"\"\n        return cam_id in self.active_cameras\n\n    def _camera_loop(self, camera_data):\n        \"\"\"\n        Loop principal de captura y procesamiento (ejecuta en thread separado)\n\n        Args:\n            camera_data: Diccionario con datos de la cámara\n        \"\"\"\n        cam_id = camera_data['cam_id']\n        rtsp_url = camera_data['rtsp_url']\n        processor = camera_data['processor']\n\n        # Intentar conectar a RTSP\n        print(f\"\uD83D\uDD0C Conectando a RTSP: {rtsp_url}\")\n        capture = cv2.VideoCapture(rtsp_url)\n\n        if not capture.isOpened():\n            print(f\"❌ Error conectando a RTSP de cámara {cam_id}\")\n            system_logger.rtsp_connection_failed(cam_id)\n            return\n\n        camera_data['capture'] = capture\n        system_logger.camera_started(cam_id)\n        print(f\"✅ Cámara {cam_id} conectada exitosamente\")\n\n        # Contadores para diagnóstico\n        frame_count = 0\n        error_count = 0\n        last_fps_check = time.time()\n        fps_frame_count = 0\n\n        while not camera_data['stop_flag']:\n            try:\n                # Capturar frame\n                ret, frame = capture.read()\n\n                if not ret:\n                    error_count += 1\n\n                    if error_count > 10:\n                        print(f\"❌ Demasiados errores en cámara {cam_id}, reconectando...\")\n                        system_logger.rtsp_connection_failed(cam_id)\n\n                        # Intentar reconectar\n                        capture.release()\n                        time.sleep(2)\n                        capture = cv2.VideoCapture(rtsp_url)\n\n                        if capture.isOpened():\n                            camera_data['capture'] = capture\n                            error_count = 0\n                            system_logger.rtsp_connection_restored(cam_id)\n                        else:\n                            print(f\"❌ No se pudo reconectar cámara {cam_id}\")\n                            break\n\n                    time.sleep(0.1)\n                    continue\n\n                # Reset error counter si captura exitosa\n                error_count = 0\n\n                # Guardar frame raw\n                camera_data['current_frame'] = frame.copy()\n\n                # Procesar frame con el procesador de IA\n                try:\n                    processed_frame = processor.process_frame(frame)\n                    camera_data['processed_frame'] = processed_frame\n                except Exception as e:\n                    print(f\"❌ Error en procesador de cámara {cam_id}: {str(e)}\")\n                    system_logger.processor_error(cam_id, str(e))\n                    # Usar frame original si falla el procesamiento\n                    camera_data['processed_frame'] = frame.copy()\n\n                frame_count += 1\n                fps_frame_count += 1\n\n                # Calcular FPS cada 5 segundos\n                if time.time() - last_fps_check >= 5.0:\n                    fps = fps_frame_count / 5.0\n                    fps_frame_count = 0\n                    last_fps_check = time.time()\n\n                    # Advertir si FPS es bajo\n                    if fps < 10:\n                        system_logger.low_fps_warning(cam_id, int(fps))\n\n                # Control de CPU (no procesar más rápido de lo necesario)\n                time.sleep(0.001)\n\n            except Exception as e:\n                print(f\"❌ Error inesperado en loop de cámara {cam_id}: {str(e)}\")\n                system_logger.log(cam_id, f\"Error en loop: {str(e)}\", \"ERROR\")\n                time.sleep(0.5)\n\n        # Limpieza al salir\n        capture.release()\n        print(f\"\uD83D\uDED1 Loop de cámara {cam_id} terminado ({frame_count} frames procesados)\")\n        system_logger.camera_stopped(cam_id)
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/modules/vision/manager.py b/modules/vision/manager.py
+--- a/modules/vision/manager.py	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/modules/vision/manager.py	(date 1770407796556)
+@@ -1,267 +1,322 @@
+-# modules/vision/manager.py
++# modules/vision/vision_manager.py
++import cv2
+ import threading
+-import time
++import subprocess
++import numpy as np
++from collections import defaultdict
++from modules.vision.processors import get_processor_class
+ from config.config_manager import device_config
+-from modules.vision.processors import get_processor_class
+-from modules.analytics.specialists.system_logger import system_logger
+-from modules.analytics.specialists.alerts_engine import alerts_engine
+-import cv2
++import time
++import logging
++
++logger = logging.getLogger(__name__)
+ 
+ 
+ class VisionManager:
+     """
+-    Singleton que gestiona todas las cámaras y sus procesadores
++    Gestor central de cámaras y procesadores
++    Maneja captura de video, procesamiento y streaming a MediaMTX
+     """
+-    _instance = None
+-
+-    def __new__(cls):
+-        if cls._instance is None:
+-            cls._instance = super().__new__(cls)
+-            cls._instance._initialized = False
+-        return cls._instance
+ 
+     def __init__(self):
+-        if self._initialized:
+-            return
+-
+-        # Diccionario de cámaras activas: {cam_id: camera_thread_data}
+-        self.active_cameras = {}
+-
+-        # Lock para thread-safety
++        self.active_cameras = {}  # {cam_id: CameraHandler}
+         self.lock = threading.Lock()
++        logger.info("✅ VisionManager inicializado")
+ 
+-        self._initialized = True
+-        print("✅ VisionManager inicializado")
+-
+-    def start_camera(self, cam_id, processor_id=None):
++    def start_camera(self, cam_id, processor_id):
+         """
+-        Inicia captura y procesamiento de una cámara
++        Inicia una cámara con un procesador específico
+ 
+         Args:
+             cam_id: ID de la cámara
+-            processor_id: ID del procesador (si None, usa el activo en config)
++            processor_id: ID del procesador a usar
++
++        Returns:
++            bool: True si se inició correctamente
+         """
+         with self.lock:
+-            # Verificar si ya está activa
++            # Detener cámara si ya está activa
+             if cam_id in self.active_cameras:
+-                print(f"⚠️ Cámara {cam_id} ya está activa")
+-                return False
++                logger.info(f"🔄 Cámara {cam_id} ya activa, reiniciando...")
++                self.stop_camera(cam_id)
+ 
+             # Obtener configuración de la cámara
+-            camera = device_config.get_camera(cam_id)
+-            if not camera:
+-                print(f"❌ Cámara {cam_id} no encontrada en configuración")
+-                return False
+-
+-            # Determinar procesador a usar
+-            if processor_id is None:
+-                processor_id = camera.get('active_processor')
+-
+-            if processor_id is None:
+-                print(f"❌ No hay procesador asignado a cámara {cam_id}")
++            camera_config = device_config.get_camera(cam_id)
++            if not camera_config:
++                logger.error(f"❌ Cámara {cam_id} no encontrada en configuración")
+                 return False
+ 
+             # Obtener clase del procesador
+             ProcessorClass = get_processor_class(processor_id)
+             if not ProcessorClass:
+-                print(f"❌ Procesador {processor_id} no encontrado")
++                logger.error(f"❌ Procesador {processor_id} no encontrado")
+                 return False
+ 
+-            # Obtener URL RTSP
+-            rtsp_url = device_config.get_rtsp_url(cam_id)
+-            if not rtsp_url:
+-                print(f"❌ URL RTSP no configurada para cámara {cam_id}")
+-                system_logger.log(cam_id, "URL RTSP no configurada", "ERROR")
+-                return False
++            # Crear handler de cámara
++            try:
++                camera_handler = CameraHandler(
++                    cam_id=cam_id,
++                    rtsp_url=camera_config['rtsp_url'],
++                    processor_class=ProcessorClass,
++                    camera_label=camera_config.get('label', f'Cámara {cam_id}')
++                )
++
++                # Iniciar captura y procesamiento
++                if camera_handler.start():
++                    self.active_cameras[cam_id] = camera_handler
++                    logger.info(f"✅ Cámara {cam_id} iniciada con procesador {processor_id}")
++                    logger.info(f"   📹 Label: {camera_config.get('label')}")
++                    logger.info(f"   🤖 Procesador: {ProcessorClass.PROCESSOR_LABEL}")
++                    return True
++                else:
++                    logger.error(f"❌ Error al iniciar cámara {cam_id}")
++                    return False
+ 
+-            # Crear control de thread
+-            camera_data = {
+-                'cam_id': cam_id,
+-                'rtsp_url': rtsp_url,
+-                'processor_id': processor_id,
+-                'processor': ProcessorClass(cam_id),
+-                'stop_flag': False,
+-                'current_frame': None,
+-                'processed_frame': None,
+-                'thread': None,
+-                'capture': None
+-            }
+-
+-            # Crear y arrancar thread
+-            thread = threading.Thread(
+-                target=self._camera_loop,
+-                args=(camera_data,),
+-                daemon=True
+-            )
+-            camera_data['thread'] = thread
+-            thread.start()
+-
+-            # Registrar en diccionario
+-            self.active_cameras[cam_id] = camera_data
+-
+-            print(f"✅ Cámara {cam_id} iniciada con procesador {processor_id}")
+-            return True
++            except Exception as e:
++                logger.error(f"❌ Error al crear handler para cámara {cam_id}: {str(e)}")
++                return False
+ 
+     def stop_camera(self, cam_id):
+-        """
+-        Detiene captura y procesamiento de una cámara
+-
+-        Args:
+-            cam_id: ID de la cámara
+-        """
++        """Detiene una cámara activa"""
+         with self.lock:
+-            if cam_id not in self.active_cameras:
+-                print(f"⚠️ Cámara {cam_id} no está activa")
+-                return False
+-
+-            # Señalizar detención
+-            camera_data = self.active_cameras[cam_id]
+-            camera_data['stop_flag'] = True
+-
+-            # Esperar a que termine el thread
+-            if camera_data['thread'].is_alive():
+-                camera_data['thread'].join(timeout=2.0)
+-
+-            # Liberar recursos
+-            if camera_data['capture']:
+-                camera_data['capture'].release()
+-
+-            # Eliminar del diccionario
+-            del self.active_cameras[cam_id]
+-
+-            print(f"✅ Cámara {cam_id} detenida")
+-            return True
+-
+-    def get_processed_frame(self, cam_id):
+-        """
+-        Obtiene el último frame procesado de una cámara
+-
+-        Args:
+-            cam_id: ID de la cámara
+-
+-        Returns:
+-            numpy.ndarray: Frame procesado o None
+-        """
+-        if cam_id not in self.active_cameras:
+-            return None
++            if cam_id in self.active_cameras:
++                camera_handler = self.active_cameras[cam_id]
++                camera_handler.stop()
++                del self.active_cameras[cam_id]
++                logger.info(f"⏹️  Cámara {cam_id} detenida")
++                return True
++            else:
++                logger.warning(f"⚠️  Cámara {cam_id} no está activa")
++                return False
+ 
+-        return self.active_cameras[cam_id].get('processed_frame')
+-
+-    def get_raw_frame(self, cam_id):
+-        """
+-        Obtiene el último frame sin procesar de una cámara
+-
+-        Args:
+-            cam_id: ID de la cámara
+-
+-        Returns:
+-            numpy.ndarray: Frame raw o None
+-        """
+-        if cam_id not in self.active_cameras:
+-            return None
+-
+-        return self.active_cameras[cam_id].get('current_frame')
++    def get_active_cameras(self):
++        """Retorna lista de cámaras activas"""
++        with self.lock:
++            return list(self.active_cameras.keys())
+ 
+     def is_camera_active(self, cam_id):
+         """Verifica si una cámara está activa"""
+-        return cam_id in self.active_cameras
++        with self.lock:
++            return cam_id in self.active_cameras
+ 
+-    def _camera_loop(self, camera_data):
++
++class CameraHandler:
++    """
++    Maneja una cámara individual:
++    - Captura de video desde RTSP
++    - Procesamiento con IA
++    - Streaming a MediaMTX
++    """
++
++    def __init__(self, cam_id, rtsp_url, processor_class, camera_label="Cámara"):
++        self.cam_id = cam_id
++        self.rtsp_url = rtsp_url
++        self.processor_class = processor_class
++        self.camera_label = camera_label
++
++        # Estado
++        self.running = False
++        self.capture_thread = None
++        self.processor = None
++
++        # Video capture
++        self.cap = None
++
++        # ✅ NUEVO: FFmpeg para streaming a MediaMTX
++        self.ffmpeg_process = None
++        self.mediamtx_url = f"rtsp://localhost:8554/camera_{cam_id}_ai"
++
++        logger.info(f"🎬 CameraHandler creado para {camera_label} (ID: {cam_id})")
++
++    def start(self):
++        """Inicia captura y procesamiento"""
++        if self.running:
++            logger.warning(f"⚠️  CameraHandler {self.cam_id} ya está corriendo")
++            return False
++
++        try:
++            # Crear instancia del procesador
++            self.processor = self.processor_class(self.cam_id)
++            logger.info(f"✅ Procesador creado: {self.processor.PROCESSOR_LABEL}")
++
++            # Iniciar captura de video
++            self.cap = cv2.VideoCapture(self.rtsp_url)
++
++            if not self.cap.isOpened():
++                logger.error(f"❌ No se pudo abrir stream RTSP: {self.rtsp_url}")
++                return False
++
++            # Obtener propiedades del video
++            fps = int(self.cap.get(cv2.CAP_PROP_FPS)) or 30
++            width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
++            height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
++
++            logger.info(f"📹 Video: {width}x{height} @ {fps} FPS")
++
++            # ✅ NUEVO: Iniciar FFmpeg para streaming a MediaMTX
++            if not self._start_ffmpeg(width, height, fps):
++                logger.error(f"❌ No se pudo iniciar FFmpeg para cámara {self.cam_id}")
++                return False
++
++            # Iniciar thread de captura
++            self.running = True
++            self.capture_thread = threading.Thread(
++                target=self._capture_loop,
++                daemon=True,
++                name=f"Camera-{self.cam_id}"
++            )
++            self.capture_thread.start()
++
++            logger.info(f"✅ CameraHandler {self.cam_id} iniciado correctamente")
++            return True
++
++        except Exception as e:
++            logger.error(f"❌ Error al iniciar CameraHandler {self.cam_id}: {str(e)}")
++            self.stop()
++            return False
++
++    def _start_ffmpeg(self, width, height, fps):
+         """
+-        Loop principal de captura y procesamiento (ejecuta en thread separado)
++        Inicia proceso FFmpeg para enviar video procesado a MediaMTX
+ 
+         Args:
+-            camera_data: Diccionario con datos de la cámara
++            width: Ancho del video
++            height: Alto del video
++            fps: FPS del video
++
++        Returns:
++            bool: True si se inició correctamente
+         """
+-        cam_id = camera_data['cam_id']
+-        rtsp_url = camera_data['rtsp_url']
+-        processor = camera_data['processor']
++        try:
++            ffmpeg_cmd = [
++                'ffmpeg',
++                '-f', 'rawvideo',  # Input: raw video
++                '-vcodec', 'rawvideo',
++                '-pix_fmt', 'bgr24',  # OpenCV usa BGR
++                '-s', f'{width}x{height}',  # Tamaño
++                '-r', str(fps),  # FPS
++                '-i', '-',  # Input desde stdin
+ 
+-        # Intentar conectar a RTSP
+-        print(f"🔌 Conectando a RTSP: {rtsp_url}")
+-        capture = cv2.VideoCapture(rtsp_url)
++                # Output: RTSP a MediaMTX
++                '-c:v', 'libx264',  # Codec H.264
++                '-preset', 'ultrafast',  # Baja latencia
++                '-tune', 'zerolatency',  # Sin buffering
++                '-pix_fmt', 'yuv420p',  # Formato compatible
++                '-g', str(fps * 2),  # Keyframe cada 2 segundos
++                '-b:v', '2M',  # Bitrate 2 Mbps
++                '-maxrate', '2M',
++                '-bufsize', '4M',
++                '-f', 'rtsp',  # Formato RTSP
++                self.mediamtx_url  # URL de salida
++            ]
+ 
+-        if not capture.isOpened():
+-            print(f"❌ Error conectando a RTSP de cámara {cam_id}")
+-            system_logger.rtsp_connection_failed(cam_id)
+-            return
++            self.ffmpeg_process = subprocess.Popen(
++                ffmpeg_cmd,
++                stdin=subprocess.PIPE,
++                stdout=subprocess.DEVNULL,
++                stderr=subprocess.DEVNULL
++            )
+ 
+-        camera_data['capture'] = capture
+-        system_logger.camera_started(cam_id)
+-        print(f"✅ Cámara {cam_id} conectada exitosamente")
++            logger.info(f"✅ FFmpeg iniciado para cámara {self.cam_id}")
++            logger.info(f"   📡 Streaming a: {self.mediamtx_url}")
++            return True
+ 
+-        # Contadores para diagnóstico
++        except Exception as e:
++            logger.error(f"❌ Error al iniciar FFmpeg: {str(e)}")
++            return False
++
++    def _capture_loop(self):
++        """
++        Loop principal de captura y procesamiento
++        """
++        logger.info(f"🎬 Iniciando loop de captura para cámara {self.cam_id}")
++
+         frame_count = 0
+         error_count = 0
+-        last_fps_check = time.time()
+-        fps_frame_count = 0
++        max_errors = 10
+ 
+-        while not camera_data['stop_flag']:
++        while self.running:
+             try:
+                 # Capturar frame
+-                ret, frame = capture.read()
++                ret, frame = self.cap.read()
+ 
+                 if not ret:
+                     error_count += 1
+-
+-                    if error_count > 10:
+-                        print(f"❌ Demasiados errores en cámara {cam_id}, reconectando...")
+-                        system_logger.rtsp_connection_failed(cam_id)
++                    logger.warning(f"⚠️  Error al capturar frame {frame_count} de cámara {self.cam_id}")
+ 
+-                        # Intentar reconectar
+-                        capture.release()
+-                        time.sleep(2)
+-                        capture = cv2.VideoCapture(rtsp_url)
+-
+-                        if capture.isOpened():
+-                            camera_data['capture'] = capture
+-                            error_count = 0
+-                            system_logger.rtsp_connection_restored(cam_id)
+-                        else:
+-                            print(f"❌ No se pudo reconectar cámara {cam_id}")
+-                            break
++                    if error_count >= max_errors:
++                        logger.error(f"❌ Demasiados errores de captura en cámara {self.cam_id}, deteniendo...")
++                        break
+ 
+                     time.sleep(0.1)
+                     continue
+ 
+-                # Reset error counter si captura exitosa
++                # Reset error count on success
+                 error_count = 0
++                frame_count += 1
+ 
+-                # Guardar frame raw
+-                camera_data['current_frame'] = frame.copy()
+-
+-                # Procesar frame con el procesador de IA
+-                try:
+-                    processed_frame = processor.process_frame(frame)
+-                    camera_data['processed_frame'] = processed_frame
+-                except Exception as e:
+-                    print(f"❌ Error en procesador de cámara {cam_id}: {str(e)}")
+-                    system_logger.processor_error(cam_id, str(e))
+-                    # Usar frame original si falla el procesamiento
+-                    camera_data['processed_frame'] = frame.copy()
++                # ✅ PROCESAR FRAME CON IA (aquí se añaden los boxes)
++                if self.processor:
++                    try:
++                        processed_frame = self.processor.process_frame(frame)
++                    except Exception as e:
++                        logger.error(f"❌ Error en procesador: {str(e)}")
++                        processed_frame = frame  # Usar frame original si falla
++                else:
++                    processed_frame = frame
++
++                # ✅ ENVIAR FRAME PROCESADO A FFMPEG/MediaMTX
++                if self.ffmpeg_process and self.ffmpeg_process.poll() is None:
++                    try:
++                        self.ffmpeg_process.stdin.write(processed_frame.tobytes())
++                    except BrokenPipeError:
++                        logger.error(f"❌ FFmpeg pipe roto para cámara {self.cam_id}")
++                        break
++                    except Exception as e:
++                        logger.error(f"❌ Error al escribir a FFmpeg: {str(e)}")
++
++                # Log cada 300 frames (~10 segundos a 30fps)
++                if frame_count % 300 == 0:
++                    logger.debug(f"📊 Cámara {self.cam_id}: {frame_count} frames procesados")
++
++            except Exception as e:
++                logger.error(f"❌ Error en capture loop de cámara {self.cam_id}: {str(e)}")
++                time.sleep(0.1)
+ 
+-                frame_count += 1
+-                fps_frame_count += 1
++        logger.info(f"⏹️  Loop de captura terminado para cámara {self.cam_id}")
+ 
+-                # Calcular FPS cada 5 segundos
+-                if time.time() - last_fps_check >= 5.0:
+-                    fps = fps_frame_count / 5.0
+-                    fps_frame_count = 0
+-                    last_fps_check = time.time()
++    def stop(self):
++        """Detiene la cámara y limpia recursos"""
++        logger.info(f"🛑 Deteniendo cámara {self.cam_id}...")
+ 
+-                    # Advertir si FPS es bajo
+-                    if fps < 10:
+-                        system_logger.low_fps_warning(cam_id, int(fps))
++        self.running = False
+ 
+-                # Control de CPU (no procesar más rápido de lo necesario)
+-                time.sleep(0.001)
++        # Esperar a que termine el thread
++        if self.capture_thread and self.capture_thread.is_alive():
++            self.capture_thread.join(timeout=2)
+ 
++        # Cerrar captura de video
++        if self.cap:
++            self.cap.release()
++            self.cap = None
++
++        # Detener FFmpeg
++        if self.ffmpeg_process:
++            try:
++                self.ffmpeg_process.stdin.close()
++                self.ffmpeg_process.terminate()
++                self.ffmpeg_process.wait(timeout=2)
+             except Exception as e:
+-                print(f"❌ Error inesperado en loop de cámara {cam_id}: {str(e)}")
+-                system_logger.log(cam_id, f"Error en loop: {str(e)}", "ERROR")
+-                time.sleep(0.5)
++                logger.warning(f"⚠️  Error al detener FFmpeg: {str(e)}")
++                try:
++                    self.ffmpeg_process.kill()
++                except:
++                    pass
++            finally:
++                self.ffmpeg_process = None
++
++        logger.info(f"✅ Cámara {self.cam_id} detenida completamente")
+ 
+-        # Limpieza al salir
+-        capture.release()
+-        print(f"🛑 Loop de cámara {cam_id} terminado ({frame_count} frames procesados)")
+-        system_logger.camera_stopped(cam_id)
+\ No newline at end of file
++
++# Instancia global
++vision_manager = VisionManager()
+\ No newline at end of file
+Index: modules/vision/processors/flow_cars.py
+===================================================================
+diff --git a/modules/vision/processors/flow_cars.py b/modules/vision/processors/flow_cars_processor.py
+rename from modules/vision/processors/flow_cars.py
+rename to modules/vision/processors/flow_cars_processor.py
+--- a/modules/vision/processors/flow_cars.py	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/modules/vision/processors/flow_cars_processor.py	(date 1770410760493)
+@@ -1,4 +1,4 @@
+-# modules/vision/processors/flow_cars.py
++# modules/vision/processors/flow_cars_processor.py
+ from .base_processor import BaseProcessor
+ import cv2
+ import csv
+@@ -11,6 +11,12 @@
+     """
+     Procesador que detecta y cuenta vehículos (autos, camiones, motos)
+     Útil para estacionamientos y control de tráfico
++
++    MEJORAS v2:
++    - Umbral de alerta reducido (5 vehículos vs 15)
++    - Modo estacionamiento con detección de entradas/salidas
++    - Alertas por tipo de vehículo
++    - Logs de debug
+     """
+ 
+     PROCESSOR_ID = 3
+@@ -29,19 +35,29 @@
+         # CARGAR MODELO YOLO PARA DETECCIÓN DE VEHÍCULOS
+         # ============================================================
+         try:
+-            # Intentar cargar modelo personalizado primero
+-            model_path = "models/NixitoS.pt"
++            # ✅ FIX PyTorch 2.6: Agregar safe_globals para YOLO
++            import torch
++            try:
++                torch.serialization.add_safe_globals([
++                    'ultralytics.nn.tasks.YOLOv10DetectionModel',
++                    'ultralytics.nn.tasks.DetectionModel',
++                ])
++            except:
++                pass  # Si falla, continuar de todos modos
++
++            # Usar YOLO11s
++            model_path = "models/yolo11s.pt"
+             if os.path.exists(model_path):
+                 self.model = YOLO(model_path)
+-                print(f"✅ Modelo personalizado cargado: {model_path}")
++                print(f"✅ Modelo YOLO11s cargado: {model_path}")
+             else:
+-                # Fallback a modelo preentrenado
++                # Fallback
+                 self.model = YOLO('yolov8n.pt')
+-                print("✅ Modelo YOLO preentrenado cargado")
++                print("✅ Modelo YOLOv8n cargado (fallback)")
+ 
+             # Configuración del modelo
+-            self.model.conf = 0.40  # Umbral de confianza
+-            self.model.iou = 0.45  # IoU threshold
++            self.model.conf = 0.40
++            self.model.iou = 0.45
+ 
+         except Exception as e:
+             print(f"❌ Error cargando modelo YOLO: {str(e)}")
+@@ -68,11 +84,25 @@
+         self.frames_since_save = 0
+         self.max_vehicles_today = 0
+ 
++        # ✅ NUEVO: Modo estacionamiento
++        self.parking_mode = True  # Detectar entradas/salidas
++        self.last_vehicle_count = 0
++        self.last_counts_by_type = {
++            'Auto': 0,
++            'Moto': 0,
++            'Autobus': 0,
++            'Camion': 0
++        }
++
+         # Línea de conteo
+         self.counting_line_y = None
+         self.vehicles_in = 0
+         self.vehicles_out = 0
+ 
++        print(f"🚗 Procesador de vehículos iniciado")
++        print(f"   - Modo estacionamiento: {self.parking_mode}")
++        print(f"   - Umbral de alerta: 5 vehículos")
++
+     def _init_csv(self):
+         """Inicializa archivo CSV con headers"""
+         if not os.path.exists(self.csv_file):
+@@ -204,9 +234,9 @@
+         # HUD (Heads-Up Display)
+         # ============================================================
+ 
+-        # Panel izquierdo - Información general
++        # Panel izquierdo
+         overlay = processed_frame.copy()
+-        cv2.rectangle(overlay, (0, 0), (400, 240), (0, 0, 0), -1)
++        cv2.rectangle(overlay, (0, 0), (400, 280), (0, 0, 0), -1)
+         cv2.addWeighted(overlay, 0.7, processed_frame, 0.3, 0, processed_frame)
+ 
+         # Título
+@@ -234,10 +264,10 @@
+ 
+         # Timestamp
+         timestamp = datetime.now().strftime("%H:%M:%S")
+-        cv2.putText(processed_frame, timestamp, (10, 220),
++        cv2.putText(processed_frame, timestamp, (10, 260),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
+ 
+-        # Panel derecho - Estadísticas
++        # Panel derecho
+         overlay2 = processed_frame.copy()
+         cv2.rectangle(overlay2, (w - 300, 0), (w, 150), (0, 0, 0), -1)
+         cv2.addWeighted(overlay2, 0.7, processed_frame, 0.3, 0, processed_frame)
+@@ -259,14 +289,14 @@
+                     (w - 290, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+ 
+         # Indicador de modelo
+-        model_status = "YOLO" if self.model else "Sin Modelo"
++        model_status = "YOLO11s" if self.model else "Sin Modelo"
+         status_color = (0, 255, 0) if self.model else (0, 0, 255)
+         cv2.circle(processed_frame, (w - 30, h - 30), 15, status_color, -1)
+-        cv2.putText(processed_frame, model_status, (w - 150, h - 23),
++        cv2.putText(processed_frame, model_status, (w - 180, h - 23),
+                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 2)
+ 
+         # ============================================================
+-        # GUARDAR EN CSV
++        # GUARDAR EN CSV Y GENERAR ALERTAS
+         # ============================================================
+         self.frames_since_save += 1
+         if self.frames_since_save >= 30:  # Cada segundo
+@@ -274,8 +304,12 @@
+             self._save_to_csv(total_current, current_counts, avg_conf)
+             self.frames_since_save = 0
+ 
+-            # Generar alerta si hay congestión
+-            if total_current > 15:
++            # ============================================================
++            # ✅ MEJORADO: ALERTAS MÁS FRECUENTES
++            # ============================================================
++
++            # Alerta 1: Alta densidad (umbral reducido de 15 a 5)
++            if total_current > 5:
+                 self.generate_alert(
+                     f"Alta densidad vehicular - {total_current} vehículos detectados",
+                     level="PRECAUCION",
+@@ -286,6 +320,79 @@
+                     }
+                 )
+ 
++            # ✅ NUEVO: Alerta 2 - Modo estacionamiento (entradas/salidas)
++            if self.parking_mode:
++                # Detectar entrada de vehículo
++                if total_current > self.last_vehicle_count:
++                    diff = total_current - self.last_vehicle_count
++
++                    # Detectar qué tipo de vehículo entró
++                    entered_type = None
++                    for v_type in self.vehicle_classes.values():
++                        if current_counts[v_type] > self.last_counts_by_type[v_type]:
++                            entered_type = v_type
++                            break
++
++                    self.vehicles_in += diff
++
++                    msg = f"Vehículo ingresó al estacionamiento"
++                    if entered_type:
++                        msg = f"{entered_type} ingresó al estacionamiento"
++
++                    self.generate_alert(
++                        msg,
++                        level="INFO",
++                        context={
++                            "total": total_current,
++                            "change": f"+{diff}",
++                            "vehicle_type": entered_type or "Desconocido"
++                        }
++                    )
++                    print(f"🚗➡️  {msg} (Total: {total_current})")
++
++                # Detectar salida de vehículo
++                elif total_current < self.last_vehicle_count:
++                    diff = self.last_vehicle_count - total_current
++
++                    # Detectar qué tipo de vehículo salió
++                    exited_type = None
++                    for v_type in self.vehicle_classes.values():
++                        if current_counts[v_type] < self.last_counts_by_type[v_type]:
++                            exited_type = v_type
++                            break
++
++                    self.vehicles_out += diff
++
++                    msg = f"Vehículo salió del estacionamiento"
++                    if exited_type:
++                        msg = f"{exited_type} salió del estacionamiento"
++
++                    self.generate_alert(
++                        msg,
++                        level="INFO",
++                        context={
++                            "total": total_current,
++                            "change": f"-{diff}",
++                            "vehicle_type": exited_type or "Desconocido"
++                        }
++                    )
++                    print(f"🚗⬅️  {msg} (Total: {total_current})")
++
++                # Actualizar contadores para siguiente comparación
++                self.last_vehicle_count = total_current
++                self.last_counts_by_type = current_counts.copy()
++
++            # ✅ NUEVO: Alerta 3 - Alto flujo de camiones
++            if current_counts['Camion'] >= 2:
++                self.generate_alert(
++                    f"Flujo de camiones detectado - {current_counts['Camion']} camiones",
++                    level="INFO",
++                    context={
++                        "truck_count": current_counts['Camion'],
++                        "total": total_current
++                    }
++                )
++
+         return processed_frame
+ 
+     def _save_to_csv(self, total, counts, confidence):
+Index: app.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># app.py\nfrom flask import Flask, send_from_directory\nfrom flask_cors import CORS\nfrom extensions import socketio\nfrom dotenv import load_dotenv\nimport os\n\n# Cargar variables de entorno\nload_dotenv()\n\n# Crear aplicación Flask con carpeta static\napp = Flask(__name__, static_folder='static')\napp.config['SECRET_KEY'] = os.getenv('JWT_SECRET', 'cistem_secret_key_2025')\n\n# Configurar CORS\nCORS(app, resources={\n    r\"/*\": {\n        \"origins\": \"*\",\n        \"methods\": [\"GET\", \"POST\", \"PUT\", \"DELETE\", \"OPTIONS\"],\n        \"allow_headers\": [\"Content-Type\", \"Authorization\"]\n    }\n})\n\n# Inicializar SocketIO con la app\nsocketio.init_app(\n    app,\n    cors_allowed_origins=\"*\",\n    async_mode='threading',\n    ping_timeout=60,\n    ping_interval=25\n)\n\n# Importar controladores (esto registra los eventos)\nprint(\"\uD83D\uDCE1 Registrando controladores SocketIO...\")\nimport controllers.auth_controller\nimport controllers.station_controller\nimport controllers.logs_controller\nimport controllers.alerts_controller\nimport controllers.camera_controller\nimport controllers.video_controller\n\nprint(\"✅ Controladores registrados\\n\")\n\n# ✅ NUEVO: Registrar rutas HTTP del robot\nfrom controllers.robot_controller import register_robot_routes, get_robot_camera_data\n\nregister_robot_routes(app)\n\n\n# Evento de conexión\n@socketio.on('connect')\ndef handle_connect():\n    print(\"\uD83D\uDD0C Cliente conectado\")\n\n\n@socketio.on('disconnect')\ndef handle_disconnect():\n    print(\"\uD83D\uDD0C Cliente desconectado\")\n\n\n# ============================================================\n# RUTAS HTTP\n# ============================================================\n\n@app.route('/')\ndef index():\n    \"\"\"Ruta raíz con información del servicio\"\"\"\n    return {\n        'service': 'Cistem Vision Backend',\n        'version': '1.2',  # ✅ Actualizado\n        'status': 'running',\n        'protocol': 'SocketIO',\n        'features': ['fixed_cameras', 'mobile_robot']  # ✅ NUEVO\n    }\n\n\n@app.route('/health')\ndef health():\n    \"\"\"Endpoint de health check\"\"\"\n    from config.config_manager import device_config\n    from modules.vision.processors import get_available_processors\n    from controllers.robot_controller import robot_data  # ✅ NUEVO\n\n    device_info = device_config.get_device_info()\n    processors = get_available_processors()\n\n    # ✅ NUEVO: Incluir estado del robot\n    response = {\n        'status': 'healthy',\n        'device': device_info,\n        'processors_count': len(processors),\n        'processors': list(processors.keys()),\n        'robot_connected': robot_data.get('is_active', False),  # ✅ NUEVO\n        'robot_last_update': robot_data.get('last_update')  # ✅ NUEVO\n    }\n\n    return response\n\n\n# ============================================================\n# NUEVA RUTA: SERVIR MAPAS\n# ============================================================\n@app.route('/static/maps/<filename>')\ndef serve_map(filename):\n    \"\"\"\n    Sirve imágenes de mapas desde static/maps/\n\n    Ejemplo de uso:\n    http://localhost:5000/static/maps/laboratorio_principal.png\n    \"\"\"\n    try:\n        return send_from_directory('static/maps', filename)\n    except FileNotFoundError:\n        return {'error': 'Mapa no encontrado'}, 404\n\n\n# ============================================================\n# INICIAR SERVIDOR\n# ============================================================\n\nif __name__ == '__main__':\n    PORT = int(os.getenv('PORT', 5000))\n    DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'\n\n    print(\"=\" * 60)\n    print(\"\uD83C\uDFA5 CISTEM VISION BACKEND v1.2\")\n    print(\"=\" * 60)\n    print(f\"\uD83D\uDE80 Servidor iniciando en puerto {PORT}\")\n    print(f\"\uD83D\uDC1B Modo debug: {DEBUG}\")\n    print(f\"\uD83D\uDCE1 Protocolo: SocketIO\")\n    print(\"=\" * 60)\n    print()\n\n    # Cargar configuración del dispositivo\n    from config.config_manager import device_config\n\n    device_info = device_config.get_device_info()\n    location_info = device_config.get_location_info()\n    cameras = device_config.get_cameras()\n\n    print(f\"\uD83D\uDCF1 Dispositivo: {device_info['label']} (ID: {device_info['device_id']})\")\n    print(f\"\uD83D\uDCCD Ubicación: {location_info['label']}\")\n    print(f\"\uD83D\uDCF9 Cámaras configuradas: {len(cameras)}\")\n\n    # Mostrar procesadores disponibles\n    from modules.vision.processors import get_available_processors\n\n    processors = get_available_processors()\n    print(f\"\uD83E\uDD16 Procesadores disponibles: {len(processors)}\")\n    for proc_id, proc_info in processors.items():\n        print(f\"   - [{proc_id}] {proc_info['label']}\")\n\n    print()\n    print(\"=\" * 60)\n    print(f\"✅ Servidor listo en http://localhost:{PORT}\")\n    print(f\"✅ WebSocket en ws://localhost:{PORT}\")\n    print(f\"\uD83D\uDDFA\uFE0F  Mapas en http://localhost:{PORT}/static/maps/\")\n    print(f\"\uD83E\uDD16 Robot endpoint: POST http://localhost:{PORT}/api/robot/data\")  # ✅ NUEVO\n    print(f\"\uD83D\uDCF8 Evidencias: GET http://localhost:{PORT}/api/evidence/\")  # ✅ NUEVO\n    print(\"=\" * 60)\n    print()\n\n    # ✅ NUEVO: Mostrar rutas del robot registradas\n    print(\"\uD83D\uDCCB Rutas HTTP registradas:\")\n    for rule in app.url_map.iter_rules():\n        if 'robot' in str(rule) or 'evidence' in str(rule):\n            methods = ', '.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))\n            print(f\"  [{methods}] {rule.rule}\")\n    print()\n\n    # Iniciar servidor\n    socketio.run(\n        app,\n        host='0.0.0.0',\n        port=PORT,\n        debug=DEBUG,\n        use_reloader=False,\n        allow_unsafe_werkzeug=True\n    )
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app.py b/app.py
+--- a/app.py	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/app.py	(date 1770409429620)
+@@ -41,11 +41,6 @@
+ 
+ print("✅ Controladores registrados\n")
+ 
+-# ✅ NUEVO: Registrar rutas HTTP del robot
+-from controllers.robot_controller import register_robot_routes, get_robot_camera_data
+-
+-register_robot_routes(app)
+-
+ 
+ # Evento de conexión
+ @socketio.on('connect')
+@@ -67,10 +62,9 @@
+     """Ruta raíz con información del servicio"""
+     return {
+         'service': 'Cistem Vision Backend',
+-        'version': '1.2',  # ✅ Actualizado
++        'version': '1.1',
+         'status': 'running',
+-        'protocol': 'SocketIO',
+-        'features': ['fixed_cameras', 'mobile_robot']  # ✅ NUEVO
++        'protocol': 'SocketIO'
+     }
+ 
+ 
+@@ -79,28 +73,22 @@
+     """Endpoint de health check"""
+     from config.config_manager import device_config
+     from modules.vision.processors import get_available_processors
+-    from controllers.robot_controller import robot_data  # ✅ NUEVO
+ 
+     device_info = device_config.get_device_info()
+     processors = get_available_processors()
+ 
+-    # ✅ NUEVO: Incluir estado del robot
+-    response = {
++    return {
+         'status': 'healthy',
+         'device': device_info,
+         'processors_count': len(processors),
+-        'processors': list(processors.keys()),
+-        'robot_connected': robot_data.get('is_active', False),  # ✅ NUEVO
+-        'robot_last_update': robot_data.get('last_update')  # ✅ NUEVO
++        'processors': list(processors.keys())
+     }
+-
+-    return response
+ 
+ 
+ # ============================================================
+ # NUEVA RUTA: SERVIR MAPAS
+ # ============================================================
+-@app.route('/static/maps/<filename>')
++@app.route('/static/maps/<path:filename>')
+ def serve_map(filename):
+     """
+     Sirve imágenes de mapas desde static/maps/
+@@ -114,6 +102,93 @@
+         return {'error': 'Mapa no encontrado'}, 404
+ 
+ 
++# ============================================================
++# ✅ NUEVO: AUTO-INICIO DE PROCESADORES
++# ============================================================
++def auto_start_cameras():
++    """
++    Inicia automáticamente los procesadores predefinidos en device.json
++    Se ejecuta después de que el servidor está listo
++    """
++    import logging
++    logger = logging.getLogger(__name__)
++
++    logger.info("=" * 60)
++    logger.info("🚀 INICIANDO PROCESADORES AUTOMÁTICAMENTE")
++    logger.info("=" * 60)
++
++    try:
++        # ✅ CORREGIDO: Importar dentro de la función
++        from config.config_manager import device_config
++        from modules.vision.manager import VisionManager
++
++        vision_manager = VisionManager()
++
++        # ✅ CORREGIDO: Usar get_cameras() que SÍ existe en tu DeviceConfig
++        cameras = device_config.get_cameras()
++
++        if not cameras:
++            logger.warning("⚠️  No hay cámaras configuradas en device.json")
++            return
++
++        started_count = 0
++        skipped_count = 0
++        error_count = 0
++
++        # ✅ cameras es una lista, no un diccionario
++        for camera in cameras:
++            cam_id = camera.get('cam_id')
++            camera_label = camera.get('label', f'Cámara {cam_id}')
++
++            # Verificar si la cámara está encendida
++            if not camera.get('status', False):
++                logger.info(f"⏸️  {camera_label} (ID: {cam_id}) - Apagada, omitiendo")
++                skipped_count += 1
++                continue
++
++            # Obtener procesador activo
++            active_processor = camera.get('active_processor')
++
++            if not active_processor:
++                logger.info(f"⏸️  {camera_label} (ID: {cam_id}) - Sin procesador definido")
++                skipped_count += 1
++                continue
++
++            # Intentar iniciar procesador
++            try:
++                success = vision_manager.start_camera(
++                    cam_id=cam_id,
++                    processor_id=active_processor
++                )
++
++                if success:
++                    logger.info(f"✅ {camera_label} (ID: {cam_id}) - Procesador {active_processor} iniciado")
++                    started_count += 1
++                else:
++                    logger.warning(
++                        f"⚠️  {camera_label} (ID: {cam_id}) - No se pudo iniciar procesador {active_processor}")
++                    error_count += 1
++
++            except Exception as e:
++                logger.error(f"❌ {camera_label} (ID: {cam_id}) - Error: {str(e)}")
++                error_count += 1
++
++        # Resumen
++        logger.info("=" * 60)
++        logger.info("📊 RESUMEN DE AUTO-INICIO")
++        logger.info("=" * 60)
++        logger.info(f"✅ Procesadores iniciados: {started_count}")
++        logger.info(f"⏸️  Cámaras omitidas: {skipped_count}")
++        logger.info(f"❌ Errores: {error_count}")
++        logger.info(f"📹 Total de cámaras: {len(cameras)}")
++        logger.info("=" * 60)
++
++    except Exception as e:
++        logger.error(f"❌ Error crítico en auto_start_cameras: {str(e)}")
++        import traceback
++        traceback.print_exc()
++
++
+ # ============================================================
+ # INICIAR SERVIDOR
+ # ============================================================
+@@ -123,7 +198,7 @@
+     DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+ 
+     print("=" * 60)
+-    print("🎥 CISTEM VISION BACKEND v1.2")
++    print("🎥 CISTEM VISION BACKEND v1.1")
+     print("=" * 60)
+     print(f"🚀 Servidor iniciando en puerto {PORT}")
+     print(f"🐛 Modo debug: {DEBUG}")
+@@ -155,18 +230,25 @@
+     print(f"✅ Servidor listo en http://localhost:{PORT}")
+     print(f"✅ WebSocket en ws://localhost:{PORT}")
+     print(f"🗺️  Mapas en http://localhost:{PORT}/static/maps/")
+-    print(f"🤖 Robot endpoint: POST http://localhost:{PORT}/api/robot/data")  # ✅ NUEVO
+-    print(f"📸 Evidencias: GET http://localhost:{PORT}/api/evidence/")  # ✅ NUEVO
+     print("=" * 60)
+     print()
+ 
+-    # ✅ NUEVO: Mostrar rutas del robot registradas
+-    print("📋 Rutas HTTP registradas:")
+-    for rule in app.url_map.iter_rules():
+-        if 'robot' in str(rule) or 'evidence' in str(rule):
+-            methods = ', '.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
+-            print(f"  [{methods}] {rule.rule}")
+-    print()
++    # ✅ NUEVO: Auto-inicio de procesadores
++    # Se ejecuta en un thread separado para no bloquear el servidor
++    import threading
++    import time
++
++
++    def delayed_auto_start():
++        """Espera 2 segundos y luego inicia procesadores"""
++        time.sleep(2)  # Esperar a que el servidor esté completamente listo
++        auto_start_cameras()
++
++
++    # Iniciar en thread separado
++    auto_start_thread = threading.Thread(target=delayed_auto_start, daemon=True)
++    auto_start_thread.start()
++    print("⏳ Auto-inicio de procesadores programado para 2 segundos...\n")
+ 
+     # Iniciar servidor
+     socketio.run(
+@@ -174,6 +256,6 @@
+         host='0.0.0.0',
+         port=PORT,
+         debug=DEBUG,
+-        use_reloader=False,
++        use_reloader=False,  # ✅ Importante: evitar doble inicio en modo debug
+         allow_unsafe_werkzeug=True
+     )
+\ No newline at end of file
+Index: mediamtx.yml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>###############################################\n# MediaMTX - Configuración para Cistem Vision\n# /etc/mediamtx/mediamtx.yml\n###############################################\n\n###############################################\n# Configuración general\n###############################################\n\n# API REST\napi: yes\napiAddress: :9997\n\n# Logging\nlogLevel: info\nlogDestinations: [stdout]\n\n###############################################\n# Configuración RTSP\n###############################################\n\nrtspAddress: :8554\nprotocols: [tcp, udp]\nreadTimeout: 10s\nwriteTimeout: 10s\nwriteQueueSize: 512\n\n###############################################\n# Configuración HLS (CRÍTICO PARA FRONTEND)\n###############################################\n\n# Habilitar HLS\nhls: yes\nhlsAddress: :8888\n\n# ✅ CAMBIO PRINCIPAL: Usar HLS estándar en lugar de lowLatency\n# lowLatency requiere mínimo 7 segmentos y es más exigente\nhlsVariant: mpegts\n\n# Configuración de segmentos (valores compatibles con modo estándar)\nhlsSegmentCount: 7\nhlsSegmentDuration: 2s\nhlsSegmentMaxSize: 50M\n\n# CORS - Permitir acceso desde cualquier origen\nhlsAllowOrigin: '*'\n\n# IMPORTANTE: Habilitar HLS siempre (no solo on-demand)\nhlsAlwaysRemux: yes\n\n###############################################\n# Configuración WebRTC\n###############################################\n\nwebrtc: yes\nwebrtcAddress: :8889\nwebrtcICEServers: []\n\n###############################################\n# Configuración de paths (cámaras)\n###############################################\n\npaths:\n  #-----------------------------------------\n  # Configuración global para TODOS los paths\n  #-----------------------------------------\n  all:\n    # Permitir publicación sin autenticación\n    publishUser:\n    publishPass:\n\n    # Permitir lectura sin autenticación\n    readUser:\n    readPass:\n\n  #-----------------------------------------\n  # Cámara 1: Tapo C100 (cam_1001)\n  #-----------------------------------------\n  cam_1001:\n    source: rtsp://admin123:admin123@192.168.1.214:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  # Stream procesado por IA (VisionManager publica aquí)\n  cam_1001_ai:\n    # Sin source - el VisionManager publica a este path\n    # HLS se genera automáticamente\n\n  #-----------------------------------------\n  # Cámara 2: Tapo C310 (cam_1002)\n  #-----------------------------------------\n  cam_1002:\n    source: rtsp://admin123:admin123@192.168.1.228:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1002_ai:\n\n  #-----------------------------------------\n  # Cámara 3: Tapo C210 (cam_1003)\n  #-----------------------------------------\n  cam_1003:\n    source: rtsp://admin123:admin123@192.168.1.215:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1003_ai:\n\n  #-----------------------------------------\n  # Cámara 4: Tapo C500 (cam_1004)\n  #-----------------------------------------\n  cam_1004:\n    source: rtsp://admin123:admin123@192.168.1.82:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1004_ai:\n\n  #-----------------------------------------\n  # Cámara 5: Tapo C320WS (cam_1005)\n  #-----------------------------------------\n\n  cam_1005:\n    source: rtsp://admin123:admin123@192.168.1.157:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1005_ai:\n\n  #-----------------------------------------\n  # Cámara 6: Tapo C320WS (cam_1006)\n  #-----------------------------------------\n\n  cam_1006:\n    source: rtsp://admin123:admin123@192.168.1.31:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1006_ai:\n\n\n  #-----------------------------------------\n  # Cámara 7: Tapo C320WS (cam_1007)\n  #-----------------------------------------\n\n  cam_1007:\n    source: rtsp://admin123:admin123@192.168.1.78:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1007_ai:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/mediamtx.yml b/mediamtx.yml
+--- a/mediamtx.yml	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/mediamtx.yml	(date 1770408335210)
+@@ -155,4 +155,16 @@
+     runOnDemandStartTimeout: 10s
+     runOnDemandCloseAfter: 10s
+ 
+-  cam_1007_ai:
+\ No newline at end of file
++  cam_1007_ai:
++
++  #-----------------------------------------
++  # Cámara 8: ROBOT NIX (cam_1008)
++  #-----------------------------------------
++
++  cam_1008:
++    source: rtsp://10.223.237.185:8554/camera
++    sourceOnDemand: yes
++    runOnDemandStartTimeout: 10s
++    runOnDemandCloseAfter: 10s
++
++  cam_1008_ai:
+\ No newline at end of file
+Index: config/device.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>{\n  \"device_id\": 101,\n  \"device_label\": \"Jetson-Orin-Lab-01\",\n  \"device_type\": \"jetson_orin\",\n  \"location\": {\n    \"location_id\": 1,\n    \"label\": \"Laboratorio Principal\",\n    \"description\": \"Centro de vigilancia - Zona A\",\n    \"mapImageUrl\": \"http://100.73.141.61:5000/static/maps/mapaaicistem.png\",\n    \"isActive\": true,\n    \"mapDimensions\": {\n      \"width\": 1920,\n      \"height\": 1080\n    }\n  },\n  \"cameras\": [\n    {\n      \"cam_id\": 1001,\n      \"label\": \"Sala de Reuniones\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1001\",\n      \"position\": [\n        45.47154017857142,\n        70.2359693877551\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    },\n    {\n      \"cam_id\": 1002,\n      \"label\": \"Acceso Oficina y Taller\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1002\",\n      \"position\": [\n        40,\n        60\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 1\n    },\n    {\n      \"cam_id\": 1003,\n      \"label\": \"Almacen Interno\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1003\",\n      \"position\": [\n        20,\n        75\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 1\n    },\n    {\n      \"cam_id\": 1004,\n      \"label\": \"Acceso a Oficinas\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1004\",\n      \"position\": [\n        35,\n        65\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    },\n    {\n      \"cam_id\": 1005,\n      \"label\": \"Oficina\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1005\",\n      \"position\": [\n        45,\n        55\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    },\n    {\n      \"cam_id\": 1006,\n      \"label\": \"Estacionamiento Subterraneo\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1006\",\n      \"position\": [\n        45,\n        45\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    },\n    {\n      \"cam_id\": 1007,\n      \"label\": \"Almacen / Zona de Descarga\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1007\",\n      \"position\": [\n        80,\n        75\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    },\n    {\n      \"cam_id\": 1008,\n      \"label\": \"Perro Robotico\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1008\",\n      \"position\": [\n        20,\n        60\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2,\n        3,\n        4\n      ],\n      \"active_processor\": 1\n    }\n  ]\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/config/device.json b/config/device.json
+--- a/config/device.json	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/config/device.json	(date 1770415139217)
+@@ -87,7 +87,7 @@
+         1,
+         2
+       ],
+-      "active_processor": 2
++      "active_processor": 1
+     },
+     {
+       "cam_id": 1006,
+Index: controllers/camera_controller.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># controllers/camera_controller.py\nfrom flask_socketio import emit\nfrom extensions import socketio\nfrom config.config_manager import device_config\nfrom modules.analytics.specialists.system_logger import system_logger\nfrom modules.vision.manager import VisionManager\nfrom modules.vision.processors import get_available_processors\nfrom datetime import datetime\nfrom controllers.auth_controller import verify_token\n\nvision_manager = VisionManager()\n\n\n@socketio.on('update_camera_status')\ndef handle_update_camera_status(data):\n    \"\"\"\n    Evento: update_camera_status\n    Enciende o apaga una cámara específica\n    \"\"\"\n    try:\n        # Verificar autenticación\n        token = data.get('token')\n        if not verify_token(token):\n            emit('update_camera_status_response', {\n                'success': False,\n                'error': 'Token inválido o expirado',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Validar parámetros\n        location_id = data.get('location_id')\n        device_id = data.get('device_id')\n        cam_id = data.get('cam_id')\n        active = data.get('active')\n\n        if not all([location_id is not None, device_id is not None, cam_id is not None, active is not None]):\n            emit('update_camera_status_response', {\n                'success': False,\n                'error': 'Los parámetros location_id, device_id, cam_id y active son requeridos',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que la cámara existe\n        camera = device_config.get_camera(cam_id)\n        if not camera:\n            emit('update_camera_status_response', {\n                'success': False,\n                'error': 'Cámara no encontrada con los parámetros proporcionados',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Actualizar estado\n        device_config.update_camera_status(cam_id, active)\n\n        # Registrar en logs\n        if active:\n            system_logger.camera_started(cam_id)\n            message = \"Cámara encendida correctamente\"\n\n            # Iniciar captura de video si hay procesador activo\n            if camera.get('active_processor'):\n                vision_manager.start_camera(cam_id)\n        else:\n            system_logger.camera_stopped(cam_id)\n            message = \"Cámara apagada correctamente\"\n\n            # Detener captura de video\n            vision_manager.stop_camera(cam_id)\n\n        emit('update_camera_status_response', {\n            'success': True,\n            'message': message,\n            'location_id': location_id,\n            'device_id': device_id,\n            'cam_id': cam_id,\n            'active': active,\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n        print(f\"✅ Estado de cámara {cam_id} actualizado: {'ON' if active else 'OFF'}\")\n\n    except Exception as e:\n        print(f\"❌ Error en update_camera_status: {str(e)}\")\n        emit('update_camera_status_response', {\n            'success': False,\n            'error': 'Error al actualizar estado de cámara',\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n\n@socketio.on('update_camera_position')\ndef handle_update_camera_position(data):\n    \"\"\"\n    Evento: update_camera_position (NUEVO)\n    Actualiza la posición de una cámara en el mapa\n    \"\"\"\n    try:\n        # Verificar autenticación\n        token = data.get('token')\n        if not verify_token(token):\n            emit('update_camera_position_response', {\n                'success': False,\n                'error': 'Token inválido o expirado',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Validar parámetros\n        location_id = data.get('location_id')\n        device_id = data.get('device_id')\n        cam_id = data.get('cam_id')\n        position = data.get('position')\n\n        if not all([location_id, device_id, cam_id, position]):\n            emit('update_camera_position_response', {\n                'success': False,\n                'error': 'Los parámetros location_id, device_id, cam_id y position[] son requeridos',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Validar formato de posición\n        if not isinstance(position, list) or len(position) != 2:\n            emit('update_camera_position_response', {\n                'success': False,\n                'error': 'El parámetro position debe ser un array de 2 elementos [x, y]',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que la cámara existe\n        camera = device_config.get_camera(cam_id)\n        if not camera:\n            emit('update_camera_position_response', {\n                'success': False,\n                'error': 'Cámara no encontrada con los parámetros proporcionados',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Actualizar posición\n        success = device_config.update_camera_position(cam_id, position)\n\n        if success:\n            emit('update_camera_position_response', {\n                'success': True,\n                'message': 'Posición modificada correctamente',\n                'location_id': location_id,\n                'device_id': device_id,\n                'cam_id': cam_id,\n                'position': position,\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n\n            print(f\"✅ Posición de cámara {cam_id} actualizada: {position}\")\n        else:\n            emit('update_camera_position_response', {\n                'success': False,\n                'message': 'Error modificando la posición',\n                'location_id': location_id,\n                'device_id': device_id,\n                'cam_id': cam_id,\n                'position': camera['position'],\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n\n    except Exception as e:\n        print(f\"❌ Error en update_camera_position: {str(e)}\")\n        emit('update_camera_position_response', {\n            'success': False,\n            'error': 'Error al actualizar posición de cámara',\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n\n@socketio.on('select_processor')\ndef handle_select_processor(data):\n    \"\"\"\n    Evento: select_processor\n    Cambia el procesador de IA activo de una cámara\n    \"\"\"\n    try:\n        # Verificar autenticación\n        token = data.get('token')\n        if not verify_token(token):\n            emit('select_processor_response', {\n                'success': False,\n                'error': 'Token inválido o expirado',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Validar parámetros\n        location_id = data.get('location_id')\n        device_id = data.get('device_id')\n        cam_id = data.get('cam_id')\n        processor_id = data.get('processor_id')\n\n        if not all([location_id, device_id, cam_id, processor_id is not None]):\n            emit('select_processor_response', {\n                'success': False,\n                'error': 'Los parámetros location_id, device_id, cam_id y processor_id son requeridos',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que la cámara existe\n        camera = device_config.get_camera(cam_id)\n        if not camera:\n            emit('select_processor_response', {\n                'success': False,\n                'error': 'Cámara no encontrada con los parámetros proporcionados',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que el procesador existe\n        available_processors = get_available_processors()\n        if processor_id not in available_processors:\n            emit('select_processor_response', {\n                'success': False,\n                'error': 'Modelo no encontrado con los parámetros proporcionados',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Detener procesador actual si existe\n        if camera.get('active_processor'):\n            vision_manager.stop_camera(cam_id)\n\n        # Actualizar procesador activo\n        device_config.update_active_processor(cam_id, processor_id)\n\n        # Iniciar nuevo procesador si la cámara está activa\n        if camera['status']:\n            vision_manager.start_camera(cam_id, processor_id)\n\n        # Registrar en logs\n        processor_name = available_processors[processor_id]['label']\n        system_logger.processor_changed(cam_id, processor_name)\n\n        emit('select_processor_response', {\n            'success': True,\n            'message': 'Modelo seleccionado correctamente',\n            'location_id': location_id,\n            'device_id': device_id,\n            'cam_id': cam_id,\n            'processor_id': processor_id,\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n        print(f\"✅ Procesador {processor_id} seleccionado para cámara {cam_id}\")\n\n    except Exception as e:\n        print(f\"❌ Error en select_processor: {str(e)}\")\n        emit('select_processor_response', {\n            'success': False,\n            'error': 'Error al seleccionar procesador',\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/camera_controller.py b/controllers/camera_controller.py
+--- a/controllers/camera_controller.py	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/controllers/camera_controller.py	(date 1770409222411)
+@@ -62,7 +62,7 @@
+ 
+             # Iniciar captura de video si hay procesador activo
+             if camera.get('active_processor'):
+-                vision_manager.start_camera(cam_id)
++                vision_manager.start_camera(cam_id, camera['active_processor'])
+         else:
+             system_logger.camera_stopped(cam_id)
+             message = "Cámara apagada correctamente"
+@@ -260,4 +260,56 @@
+             'success': False,
+             'error': 'Error al seleccionar procesador',
+             'datetime': datetime.utcnow().isoformat() + 'Z'
++        })
++
++
++@socketio.on('get_camera_stream_url')
++def handle_get_camera_stream_url(data):
++    """
++    ✅ NUEVO: Retorna las URLs de streaming de una cámara
++    Retorna la URL del stream PROCESADO (con boxes y detecciones)
++
++    Args:
++        data: {
++            'location_id': int,
++            'device_id': int,
++            'cam_id': int
++        }
++    """
++    try:
++        cam_id = data.get('cam_id')
++
++        if not cam_id:
++            emit('get_camera_stream_url_response', {
++                'success': False,
++                'error': 'cam_id es requerido'
++            })
++            return
++
++        # ✅ IMPORTANTE: Retornar URL del stream PROCESADO (con boxes)
++        # El backend está publicando en camera_{cam_id}_ai
++
++        base_url = "http://localhost"  # Ajustar según tu configuración
++
++        streams = {
++            # ✅ Stream procesado con IA (con boxes y detecciones)
++            'hls': f'{base_url}:8888/camera_{cam_id}_ai/index.m3u8',
++            'rtsp': f'rtsp://localhost:8554/camera_{cam_id}_ai',
++            'webrtc': f'{base_url}:8889/camera_{cam_id}_ai',
++        }
++
++        print(f"📹 URLs de stream solicitadas para cámara {cam_id}")
++        print(f"   HLS: {streams['hls']}")
++
++        emit('get_camera_stream_url_response', {
++            'success': True,
++            'streams': streams,
++            'cam_id': cam_id
++        })
++
++    except Exception as e:
++        print(f"❌ Error al obtener URLs de stream: {str(e)}")
++        emit('get_camera_stream_url_response', {
++            'success': False,
++            'error': str(e)
+         })
+\ No newline at end of file
+Index: modules/vision/processors/__init__.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># modules/vision/processors/__init__.py\nimport os\nimport importlib\nimport inspect\nfrom .base_processor import BaseProcessor\n\n# Diccionario de procesadores disponibles\nAVAILABLE_PROCESSORS = {}\n\n\ndef register_processor(processor_class):\n    \"\"\"Registra un procesador en el sistema\"\"\"\n    if hasattr(processor_class, 'PROCESSOR_ID') and processor_class.PROCESSOR_ID is not None:\n        AVAILABLE_PROCESSORS[processor_class.PROCESSOR_ID] = {\n            'class': processor_class,\n            'label': processor_class.PROCESSOR_LABEL,\n            'description': processor_class.PROCESSOR_DESCRIPTION\n        }\n        print(f\"✅ Procesador registrado: {processor_class.PROCESSOR_LABEL} (ID: {processor_class.PROCESSOR_ID})\")\n\n\ndef load_processors():\n    \"\"\"Carga automáticamente todos los procesadores en la carpeta\"\"\"\n    processors_dir = os.path.dirname(__file__)\n\n    for filename in os.listdir(processors_dir):\n        if filename.endswith('_processor.py') and filename != 'base_processor.py':\n            module_name = filename[:-3]\n\n            try:\n                module = importlib.import_module(f'modules.vision.processors.{module_name}')\n\n                for name, obj in inspect.getmembers(module, inspect.isclass):\n                    if (issubclass(obj, BaseProcessor) and\n                            obj != BaseProcessor and\n                            hasattr(obj, 'PROCESSOR_ID') and\n                            obj.PROCESSOR_ID is not None):\n                        register_processor(obj)\n\n            except Exception as e:\n                print(f\"❌ Error cargando procesador {module_name}: {str(e)}\")\n\n\ndef get_available_processors():\n    \"\"\"Retorna diccionario de procesadores disponibles\"\"\"\n    return {\n        proc_id: {\n            'label': info['label'],\n            'description': info['description']\n        }\n        for proc_id, info in AVAILABLE_PROCESSORS.items()\n    }\n\n\ndef get_processor_class(processor_id):\n    \"\"\"Obtiene la clase de un procesador por su ID\"\"\"\n    if processor_id in AVAILABLE_PROCESSORS:\n        return AVAILABLE_PROCESSORS[processor_id]['class']\n    return None\n\n\n# Cargar procesadores al importar\nload_processors()\n\n__all__ = ['BaseProcessor', 'get_available_processors', 'get_processor_class', 'AVAILABLE_PROCESSORS']
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/modules/vision/processors/__init__.py b/modules/vision/processors/__init__.py
+--- a/modules/vision/processors/__init__.py	(revision a567d116439e0ade4d71d1fd9eb536233f869946)
++++ b/modules/vision/processors/__init__.py	(date 1770414544601)
+@@ -4,6 +4,53 @@
+ import inspect
+ from .base_processor import BaseProcessor
+ 
++# ============================================================
++# ✅ FIX GLOBAL PyTorch 2.6: Configurar safe_globals UNA SOLA VEZ
++# ============================================================
++import torch
++
++try:
++    # ✅ IMPORTAR las clases de YOLO primero
++    from ultralytics.nn.tasks import (
++        DetectionModel,
++    )
++
++    # Intentar importar YOLOv10 si existe
++    try:
++        from ultralytics.nn.tasks import YOLOv10DetectionModel
++
++        yolo_classes = [DetectionModel, YOLOv10DetectionModel]
++    except ImportError:
++        yolo_classes = [DetectionModel]
++
++    # ✅ Agregar las CLASES (no strings) a safe_globals
++    torch.serialization.add_safe_globals(yolo_classes)
++    print(f"✅ PyTorch configurado para YOLO (safe_globals: {len(yolo_classes)} clases)")
++
++except Exception as e:
++    print(f"⚠️  No se pudo configurar safe_globals: {e}")
++    print("   Intentando método alternativo...")
++
++    # ✅ MÉTODO ALTERNATIVO: Deshabilitar validación de weights
++    try:
++        import torch.serialization
++
++        # Monkey patch para permitir cargas no seguras temporalmente
++        original_load = torch.load
++
++
++        def patched_load(*args, **kwargs):
++            if 'weights_only' not in kwargs:
++                kwargs['weights_only'] = False
++            return original_load(*args, **kwargs)
++
++
++        torch.load = patched_load
++        print("✅ torch.load parcheado para permitir modelos YOLO")
++    except Exception as e2:
++        print(f"⚠️  Método alternativo también falló: {e2}")
++
++# ============================================================
+ # Diccionario de procesadores disponibles
+ AVAILABLE_PROCESSORS = {}
+ 

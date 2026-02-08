@@ -1,0 +1,19 @@
+Index: config/device.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>{\n  \"device_id\": 101,\n  \"device_label\": \"Jetson-Orin-Lab-01\",\n  \"device_type\": \"jetson_orin\",\n  \"location\": {\n    \"location_id\": 1,\n    \"label\": \"Laboratorio Principal\",\n    \"description\": \"Centro de vigilancia - Zona A\",\n    \"mapImageUrl\": \"http://100.73.141.61:5000/static/maps/mapanix.jpeg\",\n    \"isActive\": true,\n    \"mapDimensions\": {\n      \"width\": 1920,\n      \"height\": 1080\n    }\n  },\n  \"cameras\": [\n    {\n      \"cam_id\": 1001,\n      \"label\": \"Tapo C100 - Entrada Principal\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1001\",\n      \"position\": [\n        22.471540178571427,\n        35.2359693877551\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    },\n    {\n      \"cam_id\": 1002,\n      \"label\": \"Tapo C310 - Pasillo Norte\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1002\",\n      \"position\": [\n        90,\n        70\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 1\n    },\n    {\n      \"cam_id\": 1003,\n      \"label\": \"Tapo C210 - Salida Emergencia\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1003\",\n      \"position\": [\n        40,\n        50\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 1\n    },\n    {\n      \"cam_id\": 1004,\n      \"label\": \"Tapo C100 - Salida\",\n      \"rtsp_url\": \"rtsp://100.73.141.61:8554/cam_1004\",\n      \"position\": [\n        60,\n        70\n      ],\n      \"status\": true,\n      \"available_processors\": [\n        1,\n        2\n      ],\n      \"active_processor\": 2\n    }\n  ]\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/config/device.json b/config/device.json
+--- a/config/device.json	(revision 03fc2197a7364e6c756145ef85f9650a082a9272)
++++ b/config/device.json	(date 1770404810838)
+@@ -27,7 +27,7 @@
+         1,
+         2
+       ],
+-      "active_processor": 2
++      "active_processor": 1
+     },
+     {
+       "cam_id": 1002,

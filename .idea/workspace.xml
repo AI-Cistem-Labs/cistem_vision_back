@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Optimizacion de video con frames trabados">
+      <change beforePath="$PROJECT_DIR$/modules/vision/manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/modules/vision/manager.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/modules/vision/processors/intrusion_detector_processor.py" beforeDir="false" afterPath="$PROJECT_DIR$/modules/vision/processors/intrusion_detector_processor.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="feature/videoboxesB" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
+    <option name="ROOT_SYNC" value="DONT_SYNC" />
+    <option name="UPDATE_TYPE" value="REBASE" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;eliansolis-603&quot;
+  }
+}</component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="ef11e0d6-41ea-4df2-af1b-2f6e8075a1c7" />
+  </component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/AI-Cistem-Labs/cistem_vision_back.git&quot;,
+    &quot;accountId&quot;: &quot;ef11e0d6-41ea-4df2-af1b-2f6e8075a1c7&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
+  <component name="ProjectId" id="38fZr965OT1QeQYTQABRAeUBzoC" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python tests.pytest in test_ffmpeg.py.executor&quot;: &quot;Run&quot;,
+    &quot;Python.app.executor&quot;: &quot;Run&quot;,
+    &quot;Python.auth_controller.executor&quot;: &quot;Run&quot;,
+    &quot;Python.diagnose_processors.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.person_counter_processor.executor&quot;: &quot;Run&quot;,
+    &quot;Python.robot_controller.executor&quot;: &quot;Run&quot;,
+    &quot;Python.video_controller.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature/webrtc&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/nix/PycharmProjects/cistem_vision_back/models&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/models" />
+      <recent name="$PROJECT_DIR$/static/maps" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="app" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="cistem_vision_back" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="RUN_TOOL" value="" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/app.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.app" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-4762d8aabb82-6d6dccd035ac-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.30387.173" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="" />
+      <created>1769192782239</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1769192782239</updated>
+    </task>
+    <task id="LOCAL-00001" summary="Archivos modificados en la jetson para su utilizacion e integracion con el frontend antes de enviar video y mapa">
+      <option name="closed" value="true" />
+      <created>1769376204861</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1769376204862</updated>
+    </task>
+    <task id="LOCAL-00002" summary="Actualizacion para el envío de mapa y la posicion de las mismas. Queda pendiente la aparicion de video">
+      <option name="closed" value="true" />
+      <created>1769387816254</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1769387816254</updated>
+    </task>
+    <task id="LOCAL-00003" summary="Actualizacion y recepcion de video y notficaciones con un dispositivo RTSP. Coneexion Copmpleta parcial al front end. Proxoma actualizacion: 3 dispositivos.">
+      <option name="closed" value="true" />
+      <created>1769390178705</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1769390178705</updated>
+    </task>
+    <task id="LOCAL-00004" summary="atualizacion, 4 camras HLS">
+      <option name="closed" value="true" />
+      <created>1769450552840</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1769450552840</updated>
+    </task>
+    <task id="LOCAL-00005" summary="atualizacion, 4 camras HLS">
+      <option name="closed" value="true" />
+      <created>1769450568665</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1769450568665</updated>
+    </task>
+    <task id="LOCAL-00006" summary="atualizacion, para transmision de video con modelos">
+      <option name="closed" value="true" />
+      <created>1769456480120</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1769456480120</updated>
+    </task>
+    <task id="LOCAL-00007" summary="Bien, ahora q">
+      <option name="closed" value="true" />
+      <created>1769915989359</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1769915989359</updated>
+    </task>
+    <task id="LOCAL-00008" summary="actualizacion dev para el envio de video procesado con Opcion A de Claude para video_controller.py Muestro muy torpe y saturado con cambios en el frontend">
+      <option name="closed" value="true" />
+      <created>1769916407580</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1769916407580</updated>
+    </task>
+    <task id="LOCAL-00009" summary="actualizacion dev para el envio de video procesado con Opcion A de Claude para video_controller.py Muestro muy torpe y saturado con cambios en el frontend">
+      <option name="closed" value="true" />
+      <created>1769917044545</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1769917044545</updated>
+    </task>
+    <task id="LOCAL-00010" summary="La transmision de vidoe con cl8aude funcionó fluidadmente y con los boxes mostrandose. detalle: mucho retraso en el video, y un poco de retraso en las alertas. modificaciones hechas en manager.py y en video_controller.py y se agregó test_ffmpeg.py">
+      <option name="closed" value="true" />
+      <created>1769994410323</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1769994410323</updated>
+    </task>
+    <task id="LOCAL-00011" summary="Version con la transmision de video desde el robot, se agrego el robot_controller.py para recibir la informacion y transmitirla al front.">
+      <option name="closed" value="true" />
+      <created>1770094758378</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1770094758378</updated>
+    </task>
+    <task id="LOCAL-00012" summary="se agregó el env{io de mapa de nix en esta rama">
+      <option name="closed" value="true" />
+      <created>1770139747531</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1770139747531</updated>
+    </task>
+    <task id="LOCAL-00013" summary="Se agrega cámara del perro mediamtx.yml y al device.json">
+      <option name="closed" value="true" />
+      <created>1770140905887</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1770140905887</updated>
+    </task>
+    <task id="LOCAL-00014" summary="Modificaciones enfocadas la recepcion de datos y alertas desde plataforma robótica&#10;&#10;Modifiaciones en app.py&#10;&#10;Ahora en envía mapaaicistem.png&#10;&#10;Robot controller añadido para la comunicacion con el robot">
+      <option name="closed" value="true" />
+      <created>1770233876790</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1770233876790</updated>
+    </task>
+    <task id="LOCAL-00015" summary="Frontend recibiendo todos los procesadores y ejecucion de los mismos.&#10;&#10;Se eliminan archivos te testeo y modelos que ya no se utilizan para aligerar el proyecto.&#10;&#10;device.json actualizado para enviar todos los procesadores al frontend &#10;&#10;flow_cars.py renombrado a flow_cars_processor.py&#10;&#10;Problemas con las condiciones de las notificaciones de los ultimos procesadores">
+      <option name="closed" value="true" />
+      <created>1770253468525</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1770253468525</updated>
+    </task>
+    <task id="LOCAL-00016" summary="Web RTC enviando video normal y video procesado de la manera más sencilla &#10;&#10;Habilitado el canal camera_10XX_ai&#10;&#10;3 procesadores simplificados pero sin el muestreo de las personas ni detección de las mismas&#10;&#10;Flujo de coches agregado  &#10;&#10;Se agrega yolo11s.pt como red neuronal">
+      <option name="closed" value="true" />
+      <created>1770493172138</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1770493172138</updated>
+    </task>
+    <task id="LOCAL-00017" summary="Optimizacion de video con frames trabados">
+      <option name="closed" value="true" />
+      <created>1770502011628</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1770502011628</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
+    <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="RECENT_FILTERS">
+      <map>
+        <entry key="Branch">
+          <value>
+            <list>
+              <RecentGroup>
+                <option name="FILTER_VALUES">
+                  <option value="feature/webrtc" />
+                </option>
+              </RecentGroup>
+              <RecentGroup>
+                <option name="FILTER_VALUES">
+                  <option value="feature/devProcessors" />
+                </option>
+              </RecentGroup>
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="feature/webrtc" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Archivos modificados en la jetson para su utilizacion e integracion con el frontend antes de enviar video y mapa" />
+    <MESSAGE value="Actualizacion para el envío de mapa y la posicion de las mismas. Queda pendiente la aparicion de video" />
+    <MESSAGE value="Actualizacion y recepcion de video y notficaciones con un dispositivo RTSP. Coneexion Copmpleta parcial al front end. Proxoma actualizacion: 3 dispositivos." />
+    <MESSAGE value="atualizacion, 4 camras HLS" />
+    <MESSAGE value="atualizacion, para transmision de video con modelos" />
+    <MESSAGE value="Bien, ahora q" />
+    <MESSAGE value="actualizacion dev para el envio de video procesado con Opcion A de Claude para video_controller.py Muestro muy torpe y saturado con cambios en el frontend" />
+    <MESSAGE value="La transmision de vidoe con cl8aude funcionó fluidadmente y con los boxes mostrandose. detalle: mucho retraso en el video, y un poco de retraso en las alertas. modificaciones hechas en manager.py y en video_controller.py y se agregó test_ffmpeg.py" />
+    <MESSAGE value="Version con la transmision de video desde el robot, se agrego el robot_controller.py para recibir la informacion y transmitirla al front." />
+    <MESSAGE value="se agregó el env{io de mapa de nix en esta rama" />
+    <MESSAGE value="Se agrega cámara del perro mediamtx.yml y al device.json" />
+    <MESSAGE value="Modificaciones enfocadas la recepcion de datos y alertas desde plataforma robótica&#10;&#10;Modifiaciones en app.py&#10;&#10;Ahora en envía mapaaicistem.png&#10;&#10;Robot controller añadido para la comunicacion con el robot" />
+    <MESSAGE value="Frontend recibiendo todos los procesadores y ejecucion de los mismos.&#10;&#10;Se eliminan archivos te testeo y modelos que ya no se utilizan para aligerar el proyecto.&#10;&#10;device.json actualizado para enviar todos los procesadores al frontend &#10;&#10;flow_cars.py renombrado a flow_cars_processor.py&#10;&#10;Problemas con las condiciones de las notificaciones de los ultimos procesadores" />
+    <MESSAGE value="Web RTC enviando video normal y video procesado de la manera más sencilla &#10;&#10;Habilitado el canal camera_10XX_ai&#10;&#10;3 procesadores simplificados pero sin el muestreo de las personas ni detección de las mismas&#10;&#10;Flujo de coches agregado  &#10;&#10;Se agrega yolo11s.pt como red neuronal" />
+    <MESSAGE value="Optimizacion de video con frames trabados" />
+    <option name="LAST_COMMIT_MESSAGE" value="Optimizacion de video con frames trabados" />
+  </component>
+</project>

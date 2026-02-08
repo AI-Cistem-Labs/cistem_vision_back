@@ -1,0 +1,258 @@
+Index: modules/vision/manager.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># modules/vision/manager.py\nimport threading\nimport time\nfrom config.config_manager import device_config\nfrom modules.vision.processors import get_processor_class\nfrom modules.analytics.specialists.system_logger import system_logger\nfrom modules.analytics.specialists.alerts_engine import alerts_engine\nimport cv2\n\n\nclass VisionManager:\n    \"\"\"\n    Singleton que gestiona todas las cámaras y sus procesadores\n    \"\"\"\n    _instance = None\n\n    def __new__(cls):\n        if cls._instance is None:\n            cls._instance = super().__new__(cls)\n            cls._instance._initialized = False\n        return cls._instance\n\n    def __init__(self):\n        if self._initialized:\n            return\n\n        # Diccionario de cámaras activas: {cam_id: camera_thread_data}\n        self.active_cameras = {}\n\n        # Lock para thread-safety\n        self.lock = threading.Lock()\n\n        self._initialized = True\n        print(\"✅ VisionManager inicializado\")\n\n    def start_camera(self, cam_id, processor_id=None):\n        \"\"\"\n        Inicia captura y procesamiento de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n            processor_id: ID del procesador (si None, usa el activo en config)\n        \"\"\"\n        with self.lock:\n            # Verificar si ya está activa\n            if cam_id in self.active_cameras:\n                print(f\"⚠\uFE0F Cámara {cam_id} ya está activa\")\n                return False\n\n            # Obtener configuración de la cámara\n            camera = device_config.get_camera(cam_id)\n            if not camera:\n                print(f\"❌ Cámara {cam_id} no encontrada en configuración\")\n                return False\n\n            # Determinar procesador a usar\n            if processor_id is None:\n                processor_id = camera.get('active_processor')\n\n            if processor_id is None:\n                print(f\"❌ No hay procesador asignado a cámara {cam_id}\")\n                return False\n\n            # Obtener clase del procesador\n            ProcessorClass = get_processor_class(processor_id)\n            if not ProcessorClass:\n                print(f\"❌ Procesador {processor_id} no encontrado\")\n                return False\n\n            # Obtener URL RTSP\n            rtsp_url = device_config.get_rtsp_url(cam_id)\n            if not rtsp_url:\n                print(f\"❌ URL RTSP no configurada para cámara {cam_id}\")\n                system_logger.log(cam_id, \"URL RTSP no configurada\", \"ERROR\")\n                return False\n\n            # Crear control de thread\n            camera_data = {\n                'cam_id': cam_id,\n                'rtsp_url': rtsp_url,\n                'processor_id': processor_id,\n                'processor': ProcessorClass(cam_id),\n                'stop_flag': False,\n                'current_frame': None,\n                'processed_frame': None,\n                'thread': None,\n                'capture': None\n            }\n\n            # Crear y arrancar thread\n            thread = threading.Thread(\n                target=self._camera_loop,\n                args=(camera_data,),\n                daemon=True\n            )\n            camera_data['thread'] = thread\n            thread.start()\n\n            # Registrar en diccionario\n            self.active_cameras[cam_id] = camera_data\n\n            print(f\"✅ Cámara {cam_id} iniciada con procesador {processor_id}\")\n            return True\n\n    def stop_camera(self, cam_id):\n        \"\"\"\n        Detiene captura y procesamiento de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n        \"\"\"\n        with self.lock:\n            if cam_id not in self.active_cameras:\n                print(f\"⚠\uFE0F Cámara {cam_id} no está activa\")\n                return False\n\n            # Señalizar detención\n            camera_data = self.active_cameras[cam_id]\n            camera_data['stop_flag'] = True\n\n            # Esperar a que termine el thread\n            if camera_data['thread'].is_alive():\n                camera_data['thread'].join(timeout=2.0)\n\n            # Liberar recursos\n            if camera_data['capture']:\n                camera_data['capture'].release()\n\n            # Eliminar del diccionario\n            del self.active_cameras[cam_id]\n\n            print(f\"✅ Cámara {cam_id} detenida\")\n            return True\n\n    def get_processed_frame(self, cam_id):\n        \"\"\"\n        Obtiene el último frame procesado de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n\n        Returns:\n            numpy.ndarray: Frame procesado o None\n        \"\"\"\n        if cam_id not in self.active_cameras:\n            return None\n\n        return self.active_cameras[cam_id].get('processed_frame')\n\n    def get_raw_frame(self, cam_id):\n        \"\"\"\n        Obtiene el último frame sin procesar de una cámara\n\n        Args:\n            cam_id: ID de la cámara\n\n        Returns:\n            numpy.ndarray: Frame raw o None\n        \"\"\"\n        if cam_id not in self.active_cameras:\n            return None\n\n        return self.active_cameras[cam_id].get('current_frame')\n\n    def is_camera_active(self, cam_id):\n        \"\"\"Verifica si una cámara está activa\"\"\"\n        return cam_id in self.active_cameras\n\n    def _camera_loop(self, camera_data):\n        \"\"\"\n        Loop principal de captura y procesamiento (ejecuta en thread separado)\n\n        Args:\n            camera_data: Diccionario con datos de la cámara\n        \"\"\"\n        cam_id = camera_data['cam_id']\n        rtsp_url = camera_data['rtsp_url']\n        processor = camera_data['processor']\n\n        # Intentar conectar a RTSP\n        print(f\"\uD83D\uDD0C Conectando a RTSP: {rtsp_url}\")\n        capture = cv2.VideoCapture(rtsp_url)\n\n        if not capture.isOpened():\n            print(f\"❌ Error conectando a RTSP de cámara {cam_id}\")\n            system_logger.rtsp_connection_failed(cam_id)\n            return\n\n        camera_data['capture'] = capture\n        system_logger.camera_started(cam_id)\n        print(f\"✅ Cámara {cam_id} conectada exitosamente\")\n\n        # Contadores para diagnóstico\n        frame_count = 0\n        error_count = 0\n        last_fps_check = time.time()\n        fps_frame_count = 0\n\n        while not camera_data['stop_flag']:\n            try:\n                # Capturar frame\n                ret, frame = capture.read()\n\n                if not ret:\n                    error_count += 1\n\n                    if error_count > 10:\n                        print(f\"❌ Demasiados errores en cámara {cam_id}, reconectando...\")\n                        system_logger.rtsp_connection_failed(cam_id)\n\n                        # Intentar reconectar\n                        capture.release()\n                        time.sleep(2)\n                        capture = cv2.VideoCapture(rtsp_url)\n\n                        if capture.isOpened():\n                            camera_data['capture'] = capture\n                            error_count = 0\n                            system_logger.rtsp_connection_restored(cam_id)\n                        else:\n                            print(f\"❌ No se pudo reconectar cámara {cam_id}\")\n                            break\n\n                    time.sleep(0.1)\n                    continue\n\n                # Reset error counter si captura exitosa\n                error_count = 0\n\n                # Guardar frame raw\n                camera_data['current_frame'] = frame.copy()\n\n                # Procesar frame con el procesador de IA\n                try:\n                    processed_frame = processor.process_frame(frame)\n                    camera_data['processed_frame'] = processed_frame\n                except Exception as e:\n                    print(f\"❌ Error en procesador de cámara {cam_id}: {str(e)}\")\n                    system_logger.processor_error(cam_id, str(e))\n                    # Usar frame original si falla el procesamiento\n                    camera_data['processed_frame'] = frame.copy()\n\n                frame_count += 1\n                fps_frame_count += 1\n\n                # Calcular FPS cada 5 segundos\n                if time.time() - last_fps_check >= 5.0:\n                    fps = fps_frame_count / 5.0\n                    fps_frame_count = 0\n                    last_fps_check = time.time()\n\n                    # Advertir si FPS es bajo\n                    if fps < 10:\n                        system_logger.low_fps_warning(cam_id, int(fps))\n\n                # Control de CPU (no procesar más rápido de lo necesario)\n                time.sleep(0.001)\n\n            except Exception as e:\n                print(f\"❌ Error inesperado en loop de cámara {cam_id}: {str(e)}\")\n                system_logger.log(cam_id, f\"Error en loop: {str(e)}\", \"ERROR\")\n                time.sleep(0.5)\n\n        # Limpieza al salir\n        capture.release()\n        print(f\"\uD83D\uDED1 Loop de cámara {cam_id} terminado ({frame_count} frames procesados)\")\n        system_logger.camera_stopped(cam_id)
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/modules/vision/manager.py b/modules/vision/manager.py
+--- a/modules/vision/manager.py	(revision 576e276f955f2af6c1dedf176dd30a560287e943)
++++ b/modules/vision/manager.py	(date 1770430057245)
+@@ -1,11 +1,13 @@
+ # modules/vision/manager.py
+ import threading
+ import time
++import cv2
++import subprocess
++import os
+ from config.config_manager import device_config
+ from modules.vision.processors import get_processor_class
+ from modules.analytics.specialists.system_logger import system_logger
+ from modules.analytics.specialists.alerts_engine import alerts_engine
+-import cv2
+ 
+ 
+ class VisionManager:
+@@ -84,7 +86,8 @@
+                 'current_frame': None,
+                 'processed_frame': None,
+                 'thread': None,
+-                'capture': None
++                'capture': None,
++                'publisher': None
+             }
+ 
+             # Crear y arrancar thread
+@@ -126,6 +129,16 @@
+             if camera_data['capture']:
+                 camera_data['capture'].release()
+ 
++            # Detener publicador FFmpeg
++            if camera_data.get('publisher'):
++                print(f"🛑 Deteniendo publicador para cámara {cam_id}")
++                try:
++                    camera_data['publisher'].stdin.close()
++                    camera_data['publisher'].terminate()
++                    camera_data['publisher'].wait(timeout=1.0)
++                except:
++                    pass
++
+             # Eliminar del diccionario
+             del self.active_cameras[cam_id]
+ 
+@@ -163,8 +176,12 @@
+         return self.active_cameras[cam_id].get('current_frame')
+ 
+     def is_camera_active(self, cam_id):
+-        """Verifica si una cámara está activa"""
+-        return cam_id in self.active_cameras
++        """Verifica si una cámara está activa (soporta int o str)"""
++        try:
++            cam_id_int = int(cam_id)
++            return cam_id_int in self.active_cameras or str(cam_id) in self.active_cameras
++        except:
++            return str(cam_id) in self.active_cameras
+ 
+     def _camera_loop(self, camera_data):
+         """
+@@ -239,6 +256,50 @@
+                     system_logger.processor_error(cam_id, str(e))
+                     # Usar frame original si falla el procesamiento
+                     camera_data['processed_frame'] = frame.copy()
++                    processed_frame = camera_data['processed_frame']
++
++                # ============================================================
++                # ENVIAR FRAME PROCESADO A MEDIAMTX (RTSP/WebRTC)
++                # ============================================================
++                if camera_data['publisher'] is None and processed_frame is not None:
++                    # Inicializar publicador FFmpeg en el primer frame procesado
++                    h, w = processed_frame.shape[:2]
++                    rtsp_out = f"rtsp://localhost:8554/cam_{cam_id}_ai"
++                    
++                    # Comando FFmpeg optimizado (libx264 ultrafast para baja latencia)
++                    command = [
++                        'ffmpeg',
++                        '-y',
++                        '-f', 'rawvideo',
++                        '-vcodec', 'rawvideo',
++                        '-pix_fmt', 'bgr24',
++                        '-s', f"{w}x{h}",
++                        '-r', '20',
++                        '-i', '-',
++                        '-c:v', 'libx264',
++                        '-preset', 'ultrafast',
++                        '-tune', 'zerolatency',
++                        '-f', 'rtsp',
++                        rtsp_out
++                    ]
++                    
++                    try:
++                        camera_data['publisher'] = subprocess.Popen(
++                            command,
++                            stdin=subprocess.PIPE,
++                            stderr=subprocess.DEVNULL
++                        )
++                        print(f"🚀 Publicador FFmpeg iniciado para {rtsp_out}")
++                    except Exception as e:
++                        print(f"❌ Error al iniciar FFmpeg: {str(e)}")
++
++                # Escribir frame al pipe de FFmpeg
++                if camera_data['publisher'] and processed_frame is not None:
++                    try:
++                        camera_data['publisher'].stdin.write(processed_frame.tobytes())
++                    except Exception as e:
++                        print(f"❌ Error al escribir en FFmpeg: {str(e)}")
++                        camera_data['publisher'] = None
+ 
+                 frame_count += 1
+                 fps_frame_count += 1
+@@ -263,5 +324,14 @@
+ 
+         # Limpieza al salir
+         capture.release()
++        
++        # Detener publicador al salir del loop
++        if camera_data.get('publisher'):
++            try:
++                camera_data['publisher'].stdin.close()
++                camera_data['publisher'].terminate()
++            except:
++                pass
++                
+         print(f"🛑 Loop de cámara {cam_id} terminado ({frame_count} frames procesados)")
+         system_logger.camera_stopped(cam_id)
+\ No newline at end of file
+Index: controllers/video_controller.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># controllers/video_controller.py\nfrom flask_socketio import emit\nfrom extensions import socketio\nfrom config.config_manager import device_config\nfrom modules.vision.manager import VisionManager\nfrom datetime import datetime\nfrom controllers.auth_controller import verify_token\nimport threading\nimport time\nimport cv2\nimport base64\n\nvision_manager = VisionManager()\n\n# Diccionario para rastrear clientes activos de streaming\nactive_streams = {}  # {cam_id: {client_id: thread}}\n\n\n@socketio.on('get_camera_feed')\ndef handle_get_camera_feed(data):\n    \"\"\"\n    Evento: get_camera_feed\n    Inicia streaming de video procesado de una cámara\n    \"\"\"\n    try:\n        # Verificar autenticación\n        token = data.get('token')\n        if not verify_token(token):\n            emit('get_camera_feed_response', {\n                'error': 'Token inválido o expirado',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Validar parámetros\n        location_id = data.get('location_id')\n        device_id = data.get('device_id')\n        cam_id = data.get('cam_id')\n\n        if not all([location_id, device_id, cam_id]):\n            emit('get_camera_feed_response', {\n                'error': 'Los parámetros location_id, device_id y cam_id son requeridos',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que la cámara existe\n        camera = device_config.get_camera(cam_id)\n        if not camera:\n            emit('get_camera_feed_response', {\n                'error': 'Cámara no encontrada con los parámetros proporcionados',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que la cámara está encendida\n        if not camera['status']:\n            emit('get_camera_feed_response', {\n                'error': 'La cámara está apagada. Active la cámara antes de solicitar el stream de video',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que hay un procesador activo\n        if not camera.get('active_processor'):\n            emit('get_camera_feed_response', {\n                'error': 'No hay un procesador activo seleccionado para esta cámara',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Iniciar VisionManager si no está activo para esta cámara\n        if not vision_manager.is_camera_active(cam_id):\n            print(f\"\uD83D\uDE80 Iniciando VisionManager para cámara {cam_id}...\")\n            if not vision_manager.start_camera(cam_id):\n                emit('get_camera_feed_response', {\n                    'error': 'Error al iniciar procesamiento de video',\n                    'datetime': datetime.utcnow().isoformat() + 'Z'\n                })\n                return\n\n        # Obtener ID del cliente (SocketIO request)\n        from flask import request\n        client_id = request.sid\n\n        # Iniciar thread de streaming para este cliente\n        if cam_id not in active_streams:\n            active_streams[cam_id] = {}\n\n        # Detener stream anterior si existe\n        if client_id in active_streams[cam_id]:\n            active_streams[cam_id][client_id]['stop'] = True\n\n        # Crear control de thread\n        stream_control = {'stop': False}\n        active_streams[cam_id][client_id] = stream_control\n\n        # Iniciar thread de streaming\n        thread = threading.Thread(\n            target=stream_video,\n            args=(cam_id, client_id, stream_control)\n        )\n        thread.daemon = True\n        thread.start()\n\n        emit('get_camera_feed_response', {\n            'streaming': True,\n            'format': 'MJPEG',\n            'location_id': location_id,\n            'device_id': device_id,\n            'cam_id': cam_id,\n            'resolution': '1920x1080',  # Ajustar según configuración\n            'fps': 30,\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n        print(f\"✅ Streaming iniciado para cámara {cam_id} - Cliente {client_id}\")\n\n    except Exception as e:\n        print(f\"❌ Error en get_camera_feed: {str(e)}\")\n        emit('get_camera_feed_response', {\n            'error': 'Error al iniciar stream de video. Intente nuevamente',\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n\ndef stream_video(cam_id, client_id, stream_control):\n    \"\"\"\n    Thread que envía frames de video procesado al cliente\n    \"\"\"\n    try:\n        start_time = time.time()\n        frame_count = 0\n\n        while not stream_control['stop']:\n            # Obtener frame procesado del VisionManager\n            frame = vision_manager.get_processed_frame(cam_id)\n\n            if frame is not None:\n                # Convertir frame a base64 para enviar por SocketIO\n                _, buffer = cv2.imencode('.jpg', frame)\n                frame_base64 = base64.b64encode(buffer).decode('utf-8')\n\n                # Calcular tiempo activo\n                elapsed_time = int(time.time() - start_time)\n                hours = elapsed_time // 3600\n                minutes = (elapsed_time % 3600) // 60\n                seconds = elapsed_time % 60\n                time_active = f\"{hours:02d}:{minutes:02d}:{seconds:02d}\"\n\n                # Emitir frame al cliente específico\n                socketio.emit('video_frame', {\n                    'cam_id': cam_id,\n                    'frame': frame_base64,\n                    'time_active': time_active,\n                    'frame_number': frame_count\n                }, room=client_id)\n\n                frame_count += 1\n\n            # Control de FPS (30 FPS = ~33ms por frame)\n            time.sleep(0.033)\n\n        print(f\"✅ Streaming detenido para cámara {cam_id} - Cliente {client_id}\")\n\n    except Exception as e:\n        print(f\"❌ Error en stream_video: {str(e)}\")\n    finally:\n        # Limpiar\n        if cam_id in active_streams and client_id in active_streams[cam_id]:\n            del active_streams[cam_id][client_id]\n\n\n@socketio.on('stop_camera_feed')\ndef handle_stop_camera_feed(data):\n    \"\"\"\n    Evento: stop_camera_feed\n    Detiene el streaming de video de una cámara\n    \"\"\"\n    try:\n        cam_id = data.get('cam_id')\n\n        if not cam_id:\n            emit('stop_camera_feed_response', {\n                'success': False,\n                'error': 'El parámetro cam_id es requerido',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Obtener ID del cliente\n        from flask import request\n        client_id = request.sid\n\n        # Detener streaming\n        if cam_id in active_streams and client_id in active_streams[cam_id]:\n            active_streams[cam_id][client_id]['stop'] = True\n\n        emit('stop_camera_feed_response', {\n            'success': True,\n            'message': 'Streaming detenido correctamente',\n            'cam_id': cam_id,\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n        print(f\"✅ Streaming detenido manualmente para cámara {cam_id}\")\n\n    except Exception as e:\n        print(f\"❌ Error en stop_camera_feed: {str(e)}\")\n        emit('stop_camera_feed_response', {\n            'success': False,\n            'error': 'Error al detener streaming',\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n\n@socketio.on('disconnect')\ndef handle_disconnect():\n    \"\"\"\n    Maneja desconexión de cliente - limpia streams activos\n    \"\"\"\n    from flask import request\n    client_id = request.sid\n\n    # Detener todos los streams de este cliente\n    for cam_id in list(active_streams.keys()):\n        if client_id in active_streams[cam_id]:\n            active_streams[cam_id][client_id]['stop'] = True\n            print(f\"\uD83D\uDD0C Cliente {client_id} desconectado - Stream de cámara {cam_id} detenido\")\n\n\n# ============================================================\n# STREAMING VÍA MEDIAMTX (HLS/WebRTC)\n# ============================================================\n\nimport os\n\n# Configuración de Tailscale y MediaMTX\nTAILSCALE_IP = os.getenv('TAILSCALE_IP', '100.73.141.61')  # ⬅\uFE0F CAMBIA ESTA IP\nMEDIAMTX_HLS_PORT = os.getenv('MEDIAMTX_HLS_PORT', '8888')\nMEDIAMTX_WEBRTC_PORT = os.getenv('MEDIAMTX_WEBRTC_PORT', '8889')\nMEDIAMTX_RTSP_PORT = os.getenv('MEDIAMTX_RTSP_PORT', '8554')\n\n\n@socketio.on('get_camera_stream_url')\ndef handle_get_camera_stream_url(data):\n    \"\"\"\n    Evento: get_camera_stream_url\n    Retorna las URLs de streaming MediaMTX para una cámara específica\n    \"\"\"\n    try:\n        # Verificar autenticación\n        token = data.get('token')\n        if not verify_token(token):\n            emit('get_camera_stream_url_response', {\n                'error': 'Token inválido o expirado',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Validar parámetros\n        location_id = data.get('location_id')\n        device_id = data.get('device_id')\n        cam_id = data.get('cam_id')\n\n        if not all([location_id, device_id, cam_id]):\n            emit('get_camera_stream_url_response', {\n                'error': 'Los parámetros location_id, device_id y cam_id son requeridos',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Verificar que la cámara existe\n        camera = device_config.get_camera(cam_id)\n        if not camera:\n            emit('get_camera_stream_url_response', {\n                'error': 'Cámara no encontrada',\n                'datetime': datetime.utcnow().isoformat() + 'Z'\n            })\n            return\n\n        # Construir URLs de streaming vía MediaMTX\n        stream_urls = {\n            'hls': f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}/index.m3u8',\n            'webrtc': f'http://{TAILSCALE_IP}:{MEDIAMTX_WEBRTC_PORT}/cam_{cam_id}',\n            'rtsp': f'rtsp://{TAILSCALE_IP}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}'\n        }\n\n        emit('get_camera_stream_url_response', {\n            'success': True,\n            'cam_id': cam_id,\n            'streams': stream_urls,\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n\n        print(f\"✅ URLs de streaming MediaMTX enviadas para cámara {cam_id}\")\n\n    except Exception as e:\n        print(f\"❌ Error en get_camera_stream_url: {str(e)}\")\n        emit('get_camera_stream_url_response', {\n            'error': 'Error al obtener URLs de streaming',\n            'datetime': datetime.utcnow().isoformat() + 'Z'\n        })\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/video_controller.py b/controllers/video_controller.py
+--- a/controllers/video_controller.py	(revision 576e276f955f2af6c1dedf176dd30a560287e943)
++++ b/controllers/video_controller.py	(date 1770430070202)
+@@ -37,6 +37,13 @@
+         device_id = data.get('device_id')
+         cam_id = data.get('cam_id')
+ 
++        # Asegurar que cam_id sea int para comparaciones consistentes
++        if cam_id is not None:
++            try:
++                cam_id = int(cam_id)
++            except (ValueError, TypeError):
++                pass
++
+         if not all([location_id, device_id, cam_id]):
+             emit('get_camera_feed_response', {
+                 'error': 'Los parámetros location_id, device_id y cam_id son requeridos',
+@@ -179,6 +186,11 @@
+     """
+     try:
+         cam_id = data.get('cam_id')
++        if cam_id is not None:
++            try:
++                cam_id = int(cam_id)
++            except:
++                pass
+ 
+         if not cam_id:
+             emit('stop_camera_feed_response', {
+@@ -263,6 +275,13 @@
+         device_id = data.get('device_id')
+         cam_id = data.get('cam_id')
+ 
++        # Asegurar que cam_id sea del tipo correcto (int)
++        if cam_id is not None:
++            try:
++                cam_id = int(cam_id)
++            except (ValueError, TypeError):
++                pass
++
+         if not all([location_id, device_id, cam_id]):
+             emit('get_camera_stream_url_response', {
+                 'error': 'Los parámetros location_id, device_id y cam_id son requeridos',
+@@ -273,17 +292,26 @@
+         # Verificar que la cámara existe
+         camera = device_config.get_camera(cam_id)
+         if not camera:
++            print(f"⚠️ get_camera_stream_url: Cámara {cam_id} no encontrada")
+             emit('get_camera_stream_url_response', {
+                 'error': 'Cámara no encontrada',
+                 'datetime': datetime.utcnow().isoformat() + 'Z'
+             })
+             return
+ 
++        # Determinar si usar el stream original o el procesado (AI)
++        active = vision_manager.is_camera_active(cam_id)
++        print(f"🎬 Solicitando URL para cam_{cam_id} - ¿IA Activa?: {active}")
++        
++        suffix = ""
++        if active:
++            suffix = "_ai"
++
+         # Construir URLs de streaming vía MediaMTX
+         stream_urls = {
+-            'hls': f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}/index.m3u8',
+-            'webrtc': f'http://{TAILSCALE_IP}:{MEDIAMTX_WEBRTC_PORT}/cam_{cam_id}',
+-            'rtsp': f'rtsp://{TAILSCALE_IP}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}'
++            'hls': f'http://{TAILSCALE_IP}:{MEDIAMTX_HLS_PORT}/cam_{cam_id}{suffix}/index.m3u8',
++            'webrtc': f'http://{TAILSCALE_IP}:{MEDIAMTX_WEBRTC_PORT}/cam_{cam_id}{suffix}',
++            'rtsp': f'rtsp://{TAILSCALE_IP}:{MEDIAMTX_RTSP_PORT}/cam_{cam_id}{suffix}'
+         }
+ 
+         emit('get_camera_stream_url_response', {
+Index: mediamtx.yml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>###############################################\n# MediaMTX - Configuración para Cistem Vision\n# /etc/mediamtx/mediamtx.yml\n###############################################\n\n###############################################\n# Configuración general\n###############################################\n\n# API REST\napi: yes\napiAddress: :9997\n\n# Logging\nlogLevel: info\nlogDestinations: [stdout]\n\n###############################################\n# Configuración RTSP\n###############################################\n\nrtspAddress: :8554\nprotocols: [tcp, udp]\nreadTimeout: 10s\nwriteTimeout: 10s\nwriteQueueSize: 512\n\n###############################################\n# Configuración HLS (CRÍTICO PARA FRONTEND)\n###############################################\n\n# Habilitar HLS\nhls: yes\nhlsAddress: :8888\n\n# ✅ CAMBIO PRINCIPAL: Usar HLS estándar en lugar de lowLatency\n# lowLatency requiere mínimo 7 segmentos y es más exigente\nhlsVariant: mpegts\n\n# Configuración de segmentos (valores compatibles con modo estándar)\nhlsSegmentCount: 7\nhlsSegmentDuration: 2s\nhlsSegmentMaxSize: 50M\n\n# CORS - Permitir acceso desde cualquier origen\nhlsAllowOrigin: '*'\n\n# IMPORTANTE: Habilitar HLS siempre (no solo on-demand)\nhlsAlwaysRemux: yes\n\n###############################################\n# Configuración WebRTC\n###############################################\n\nwebrtc: yes\nwebrtcAddress: :8889\nwebrtcICEServers: []\n\n###############################################\n# Configuración de paths (cámaras)\n###############################################\n\npaths:\n  #-----------------------------------------\n  # Configuración global para TODOS los paths\n  #-----------------------------------------\n  all:\n    # Permitir publicación sin autenticación\n    publishUser:\n    publishPass:\n\n    # Permitir lectura sin autenticación\n    readUser:\n    readPass:\n\n  #-----------------------------------------\n  # Cámara 1: Tapo C100 (cam_1001)\n  #-----------------------------------------\n  cam_1001:\n    source: rtsp://admin123:admin123@192.168.1.214:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  # Stream procesado por IA (VisionManager publica aquí)\n  cam_1001_ai:\n    # Sin source - el VisionManager publica a este path\n    # HLS se genera automáticamente\n\n  #-----------------------------------------\n  # Cámara 2: Tapo C310 (cam_1002)\n  #-----------------------------------------\n  cam_1002:\n    source: rtsp://admin123:admin123@192.168.1.228:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1002_ai:\n\n  #-----------------------------------------\n  # Cámara 3: Tapo C210 (cam_1003)\n  #-----------------------------------------\n  cam_1003:\n    source: rtsp://admin123:admin123@192.168.1.215:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1003_ai:\n\n  #-----------------------------------------\n  # Cámara 4: Tapo C500 (cam_1004)\n  #-----------------------------------------\n  cam_1004:\n    source: rtsp://admin123:admin123@192.168.1.82:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1004_ai:\n\n  #-----------------------------------------\n  # Cámara 5: Tapo C320WS (cam_1005)\n  #-----------------------------------------\n\n  cam_1005:\n    source: rtsp://admin123:admin123@192.168.1.157:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1005_ai:\n\n  #-----------------------------------------\n  # Cámara 6: Tapo C320WS (cam_1006)\n  #-----------------------------------------\n\n  cam_1006:\n    source: rtsp://admin123:admin123@192.168.1.31:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1006_ai:\n\n\n  #-----------------------------------------\n  # Cámara 7: Tapo C320WS (cam_1007)\n  #-----------------------------------------\n\n  cam_1007:\n    source: rtsp://admin123:admin123@192.168.1.78:554/stream1\n    sourceOnDemand: yes\n    runOnDemandStartTimeout: 10s\n    runOnDemandCloseAfter: 10s\n\n  cam_1007_ai:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/mediamtx.yml b/mediamtx.yml
+--- a/mediamtx.yml	(revision 576e276f955f2af6c1dedf176dd30a560287e943)
++++ b/mediamtx.yml	(date 1770425093007)
+@@ -25,12 +25,11 @@
+ writeTimeout: 10s
+ writeQueueSize: 512
+ 
+-###############################################
+-# Configuración HLS (CRÍTICO PARA FRONTEND)
++# Configuración HLS (DESACTIVADO EN FAVOR DE WEBRTC)
+ ###############################################
+ 
+ # Habilitar HLS
+-hls: yes
++hls: no
+ hlsAddress: :8888
+ 
+ # ✅ CAMBIO PRINCIPAL: Usar HLS estándar en lugar de lowLatency
+@@ -46,7 +45,7 @@
+ hlsAllowOrigin: '*'
+ 
+ # IMPORTANTE: Habilitar HLS siempre (no solo on-demand)
+-hlsAlwaysRemux: yes
++hlsAlwaysRemux: no
+ 
+ ###############################################
+ # Configuración WebRTC
+@@ -54,7 +53,8 @@
+ 
+ webrtc: yes
+ webrtcAddress: :8889
+-webrtcICEServers: []
++webrtcICEServers: [stun:stun.l.google.com:19302]
++webrtcAllowOrigin: '*'
+ 
+ ###############################################
+ # Configuración de paths (cámaras)
