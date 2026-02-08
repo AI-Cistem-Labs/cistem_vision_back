@@ -8,6 +8,9 @@ The VPN Edge Agent is the client component of the custom VPN solution. It connec
 * Python 3.10+
 
 ## Install WireGuard
+### On Jetson Devices (Ubuntu-based)
+Jetson devices need a special installation of WireGuard due to kernel compatibility. Follow the instructions from the [JetsonHacks WireGuard Guide](./wireguard_jetson_guide.md).
+
 ### On Ubuntu / Debian
 > DISCLAIMER: I have only tested this on Arch Linux, but these instructions should work on Ubuntu/Debian as well.
 ```bash
