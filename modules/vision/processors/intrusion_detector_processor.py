@@ -349,7 +349,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
 
                     (label_w, label_h), baseline = cv2.getTextSize(
                         label,
-                        cv2.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_ITALIC,
                         font_scale,
                         font_thickness
                     )
@@ -381,7 +381,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         label,
                         (x1 + 5, y1 - 7),
-                        cv2.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_ITALIC,
                         font_scale,
                         (0, 0, 0),
                         font_thickness + 1,
@@ -393,7 +393,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         label,
                         (x1 + 4, y1 - 8),
-                        cv2.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_ITALIC,
                         font_scale,
                         (255, 255, 255),
                         font_thickness,
@@ -407,13 +407,13 @@ class IntrusionDetectorProcessor(BaseProcessor):
             # ✅ ALERTA mejorada
             if self.current_intruders > 0:
                 try:
-                    alert_text = f"⚠ ALERTA: {self.current_intruders} INTRUSO(S)"
-                    font_scale = 1.2  # ✅ Más grande
+                    alert_text = f"ALERTA: {self.current_intruders} INTRUSO(S)"
+                    font_scale = 1 # ✅ Más grande
 
                     # Background de alerta
                     (text_w, text_h), _ = cv2.getTextSize(
                         alert_text,
-                        cv2.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_ITALIC,
                         font_scale,
                         3
                     )
@@ -444,7 +444,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         alert_text,
                         (17, text_h + 12),
-                        cv2.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_ITALIC,
                         font_scale,
                         (0, 0, 0),
                         4,
@@ -456,7 +456,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         alert_text,
                         (15, text_h + 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
+                        cv2.FONT_ITALIC,
                         font_scale,
                         (255, 255, 255),
                         3,
