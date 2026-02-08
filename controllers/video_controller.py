@@ -236,7 +236,7 @@ def handle_disconnect():
 import os
 
 # Configuración de Tailscale y MediaMTX
-TAILSCALE_IP = os.getenv('TAILSCALE_IP', '100.73.141.61')  # ⬅️ CAMBIA ESTA IP
+TAILSCALE_IP = os.getenv('TAILSCALE_IP', '100.93.152.93')  # ⬅️ CAMBIA ESTA IP
 MEDIAMTX_HLS_PORT = os.getenv('MEDIAMTX_HLS_PORT', '8888')
 MEDIAMTX_WEBRTC_PORT = os.getenv('MEDIAMTX_WEBRTC_PORT', '8889')
 MEDIAMTX_RTSP_PORT = os.getenv('MEDIAMTX_RTSP_PORT', '8554')
