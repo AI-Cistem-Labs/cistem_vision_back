@@ -4,20 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Optimizacion de video con frames trabados">
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_38_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_40_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_43_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/TESTING.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/NixitoS.pt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/bestpersonas.pt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_full_integration.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_imports.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_socketio_client.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_vision.py" beforeDir="false" />
+    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Commit estable de transmision de video con procesamiento y transmision con WebRTC">
+      <change afterPath="$PROJECT_DIR$/modules/robot/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/modules/robot/client.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/modules/robot/handlers.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/modules/robot/validators.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/monitor_robot_data.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/robot_commander.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/robot_server_receiver.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -275,7 +270,15 @@
       <option name="project" value="LOCAL" />
       <updated>1770502011628</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="Commit estable de transmision de video con procesamiento y transmision con WebRTC">
+      <option name="closed" value="true" />
+      <created>1770578464368</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1770578464369</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -337,6 +340,7 @@
     <MESSAGE value="Frontend recibiendo todos los procesadores y ejecucion de los mismos.&#10;&#10;Se eliminan archivos te testeo y modelos que ya no se utilizan para aligerar el proyecto.&#10;&#10;device.json actualizado para enviar todos los procesadores al frontend &#10;&#10;flow_cars.py renombrado a flow_cars_processor.py&#10;&#10;Problemas con las condiciones de las notificaciones de los ultimos procesadores" />
     <MESSAGE value="Web RTC enviando video normal y video procesado de la manera más sencilla &#10;&#10;Habilitado el canal camera_10XX_ai&#10;&#10;3 procesadores simplificados pero sin el muestreo de las personas ni detección de las mismas&#10;&#10;Flujo de coches agregado  &#10;&#10;Se agrega yolo11s.pt como red neuronal" />
     <MESSAGE value="Optimizacion de video con frames trabados" />
-    <option name="LAST_COMMIT_MESSAGE" value="Optimizacion de video con frames trabados" />
+    <MESSAGE value="Commit estable de transmision de video con procesamiento y transmision con WebRTC" />
+    <option name="LAST_COMMIT_MESSAGE" value="Commit estable de transmision de video con procesamiento y transmision con WebRTC" />
   </component>
 </project>
