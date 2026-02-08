@@ -73,13 +73,14 @@
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "feature/demo",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/home/nix/PycharmProjects/cistem_vision_back/models",
+    "last_opened_file_path": "/home/nix/PycharmProjects/cistem_vision_back",
     "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
     "to.speed.mode.migration.done": "true"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/models" />
       <recent name="$PROJECT_DIR$/static/maps" />
     </key>
