@@ -4,20 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Optimizacion de video con frames trabados">
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_38_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_40_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_31_01_26,_20_43_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/TESTING.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/NixitoS.pt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/bestpersonas.pt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_full_integration.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_imports.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_socketio_client.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_vision.py" beforeDir="false" />
+    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo">
+      <change afterPath="$PROJECT_DIR$/controllers/robot_controller.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -65,28 +53,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python tests.pytest in test_ffmpeg.py.executor&quot;: &quot;Run&quot;,
-    &quot;Python.app.executor&quot;: &quot;Run&quot;,
-    &quot;Python.auth_controller.executor&quot;: &quot;Run&quot;,
-    &quot;Python.diagnose_processors.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.person_counter_processor.executor&quot;: &quot;Run&quot;,
-    &quot;Python.robot_controller.executor&quot;: &quot;Run&quot;,
-    &quot;Python.video_controller.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feature/demo&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/home/nix/PycharmProjects/cistem_vision_back&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python tests.pytest in test_ffmpeg.py.executor": "Run",
+    "Python tests.pytest in test_get_stations.py.executor": "Run",
+    "Python.app.executor": "Run",
+    "Python.auth_controller.executor": "Run",
+    "Python.diagnose_processors.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.person_counter_processor.executor": "Run",
+    "Python.robot_controller.executor": "Run",
+    "Python.video_controller.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "feature/demo",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/home/nix/PycharmProjects/cistem_vision_back",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable",
+    "to.speed.mode.migration.done": "true"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$" />
@@ -275,7 +264,47 @@
       <option name="project" value="LOCAL" />
       <updated>1770502011628</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="Commit estable de transmision de video con procesamiento y transmision con WebRTC">
+      <option name="closed" value="true" />
+      <created>1770578464368</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1770578464369</updated>
+    </task>
+    <task id="LOCAL-00019" summary="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde">
+      <option name="closed" value="true" />
+      <created>1770593592377</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1770593592377</updated>
+    </task>
+    <task id="LOCAL-00020" summary="Commit con comunicacion al robot al 100%. &#10;&#10;Pendiente el guardar la evidencia y actualizar para el campo type: cámara/robot&#10;&#10;se crea robot_commander_completo.py con chat que hace todas las funciones&#10;&#10;robot_commander_FULL.py no logró conectarse">
+      <option name="closed" value="true" />
+      <created>1770609327479</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1770609327479</updated>
+    </task>
+    <task id="LOCAL-00021" summary="Commit con comunicacion al robot al 100% y con guardado de las alertas  &#10;&#10;Pendiente actualizar para enviar el campo de type del endpoint Get Stations &#10;&#10;se crea evidence_saver.py para hacer su función. &#10;&#10;se actualiza handlers.py&#10;&#10;robot_commander.py notifica el guardado de la evidencia&#10;&#10;test_evidence_simple.py cumple su función de guardado sin conexión a robot.">
+      <option name="closed" value="true" />
+      <created>1770613175521</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1770613175521</updated>
+    </task>
+    <task id="LOCAL-00022" summary="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo">
+      <option name="closed" value="true" />
+      <created>1770616959645</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1770616959645</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -337,6 +366,11 @@
     <MESSAGE value="Frontend recibiendo todos los procesadores y ejecucion de los mismos.&#10;&#10;Se eliminan archivos te testeo y modelos que ya no se utilizan para aligerar el proyecto.&#10;&#10;device.json actualizado para enviar todos los procesadores al frontend &#10;&#10;flow_cars.py renombrado a flow_cars_processor.py&#10;&#10;Problemas con las condiciones de las notificaciones de los ultimos procesadores" />
     <MESSAGE value="Web RTC enviando video normal y video procesado de la manera más sencilla &#10;&#10;Habilitado el canal camera_10XX_ai&#10;&#10;3 procesadores simplificados pero sin el muestreo de las personas ni detección de las mismas&#10;&#10;Flujo de coches agregado  &#10;&#10;Se agrega yolo11s.pt como red neuronal" />
     <MESSAGE value="Optimizacion de video con frames trabados" />
-    <option name="LAST_COMMIT_MESSAGE" value="Optimizacion de video con frames trabados" />
+    <MESSAGE value="Commit estable de transmision de video con procesamiento y transmision con WebRTC" />
+    <MESSAGE value="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde" />
+    <MESSAGE value="Commit con comunicacion al robot al 100%. &#10;&#10;Pendiente el guardar la evidencia y actualizar para el campo type: cámara/robot&#10;&#10;se crea robot_commander_completo.py con chat que hace todas las funciones&#10;&#10;robot_commander_FULL.py no logró conectarse" />
+    <MESSAGE value="Commit con comunicacion al robot al 100% y con guardado de las alertas  &#10;&#10;Pendiente actualizar para enviar el campo de type del endpoint Get Stations &#10;&#10;se crea evidence_saver.py para hacer su función. &#10;&#10;se actualiza handlers.py&#10;&#10;robot_commander.py notifica el guardado de la evidencia&#10;&#10;test_evidence_simple.py cumple su función de guardado sin conexión a robot." />
+    <MESSAGE value="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo" />
+    <option name="LAST_COMMIT_MESSAGE" value="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo" />
   </component>
 </project>
