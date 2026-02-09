@@ -3,6 +3,7 @@ from datetime import datetime
 from extensions import socketio
 from config.config_manager import device_config
 from collections import deque
+import json
 
 
 class AlertsEngine:
@@ -36,6 +37,8 @@ class AlertsEngine:
             # Verificar que socketio tiene servidor activo
             if socketio.server is not None:
                 socketio.emit(event, data)
+                # DEBUG LOG PARA VERIFICACION DE RED
+                print(f"📡 EMIITNG {event}: {json.dumps(data)}")
         except Exception as e:
             # En modo test o sin servidor, solo ignorar
             pass
@@ -43,12 +46,6 @@ class AlertsEngine:
     def create_alert(self, cam_id, message, level="PRECAUCION", context=None):
         """
         Crea y envía una alerta al frontend
-
-        Args:
-            cam_id: ID de la cámara
-            message: Mensaje de la alerta
-            level: CRITICAL o PRECAUCION
-            context: Datos adicionales del contexto
         """
         device_info = device_config.get_device_info()
         location_info = device_config.get_location_info()
@@ -57,6 +54,7 @@ class AlertsEngine:
 
         alert = {
             "alert_id": self._alert_counter,
+            "type": "alert", # Requerida por el frontend
             "location_id": location_info["location_id"],
             "device_id": device_info["device_id"],
             "cam_id": cam_id,
@@ -85,7 +83,7 @@ class AlertsEngine:
         # Guardar en buffer
         self._get_alerts_buffer(cam_id).append(alert)
 
-        # Emitir al frontend INMEDIATAMENTE (solo si está disponible)
+        # Emitir al frontend INMEDIATAMENTE
         self._emit_to_frontend('new_alert', alert)
 
         # Log en consola

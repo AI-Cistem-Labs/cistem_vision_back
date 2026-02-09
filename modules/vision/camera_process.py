@@ -7,26 +7,38 @@ import numpy as np
 import traceback
 import os
 import queue
+import socket
 from datetime import datetime
 from multiprocessing import shared_memory
 from modules.vision.processors import get_processor_class
-from modules.analytics.specialists.alerts_engine import alerts_engine
+
+# Helper para obtener IP
+def get_ip_address():
+    try:
+        # Intento de obtener IP de red local (prioridad 10.x, 192.x, 100.x)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # No necesita ser alcanzable, solo para que el OS decida la interfaz de salida
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "localhost"
 
 class VideoWriterThread(threading.Thread):
     """
-    Hilo dedicado a escribir video de forma Asíncrona via Comandos.
+    Hilo dedicado a escribir video usando FFmpeg (subprocess) para garantizar H.264.
     """
     def __init__(self, cam_id, width, height, fps=15):
         super().__init__()
         self.cam_id = cam_id
         self.width = width
         self.height = height
-        self.fps = fps
-        # Cola para comandos (start, stop) y frames
+        self.fps = int(fps)
         self.queue = queue.Queue() 
         self.stop_event = threading.Event()
         self.is_recording = False
-        self.writer = None
+        self.ffmpeg_process = None
         self.current_filename = None
         self.current_thumbnail = None
         self.output_dir = "static/evidence"
@@ -41,7 +53,7 @@ class VideoWriterThread(threading.Thread):
         filename = f"cam_{self.cam_id}_{timestamp}.mp4"
         thumbnail_name = f"cam_{self.cam_id}_{timestamp}_thumb.jpg"
         
-        # Generar thumbnail SÍNCRONO (rápido) para tener el nombre listo para la alerta
+        # Generar thumbnail SÍNCRONO (rápido)
         if first_frame is not None:
             try:
                 thumbpath = os.path.join(self.output_dir, thumbnail_name)
@@ -58,8 +70,6 @@ class VideoWriterThread(threading.Thread):
         }
         self.queue.put(cmd)
         
-        # Marcamos como grabando 'lógicamente' para que la UI/Lógica sepa
-        # El hilo se encargará de inicializar el writer real
         self.is_recording = True
         self.current_filename = filename
         self.current_thumbnail = thumbnail_name
@@ -78,74 +88,94 @@ class VideoWriterThread(threading.Thread):
         """Encola frame si estamos grabando"""
         if self.is_recording:
             try:
-                # Type FRAME
                 self.queue.put({'type': 'FRAME', 'data': frame.copy()}, block=False)
             except queue.Full:
                 pass
 
-    def _init_writer(self, filename):
+    def _start_ffmpeg_writer(self, filename):
         filepath = os.path.join(self.output_dir, filename)
-        writer = None
         
-        # Intento 1: avc1
+        # Comando para grabar H.264 compatible con navegadores
+        # -y: sobrescribir
+        # -f rawvideo: entrada cruda
+        # -pix_fmt bgr24: formato de OpenCV
+        # -c:v libx264: encoder H.264 por software (seguro)
+        # -pix_fmt yuv420p: requerido para compatibilidad browser
+        # -movflags +faststart: mueve metadata al inicio para streaming
+        command = [
+            'ffmpeg', '-y',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{self.width}x{self.height}',
+            '-pix_fmt', 'bgr24',
+            '-r', str(self.fps),
+            '-i', '-',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast', # encode rapidísimo
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            filepath
+        ]
+        
         try:
-            fourcc = cv2.VideoWriter_fourcc(*'avc1')
-            writer = cv2.VideoWriter(filepath, fourcc, self.fps, (self.width, self.height))
-            if not writer.isOpened():
-                 print(f"⚠️ [Cam {self.cam_id}] Fallback avc1 -> mp4v")
-                 raise Exception("avc1 failed")
-        except:
-             # Intento 2: mp4v
-             try:
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                writer = cv2.VideoWriter(filepath, fourcc, self.fps, (self.width, self.height))
-             except Exception as e:
-                print(f"❌ [Cam {self.cam_id}] Fatal VideoWriter: {e}")
-                
-        return writer
+            # Stderr a DEVNULL para no ensuciar logs, o PIPE para debug
+            process = subprocess.Popen(
+                command, 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL
+            )
+            return process
+        except Exception as e:
+            print(f"❌ [Cam {self.cam_id}] Error iniciando FFmpeg writer: {e}")
+            return None
 
     def run(self):
         while not self.stop_event.is_set():
             try:
-                item = self.queue.get(timeout=1.0)
+                # Timeout corto para revisar stop_event
+                item = self.queue.get(timeout=0.5)
             except queue.Empty:
-                if not self.is_recording and self.writer:
-                     # Timeout y no grabando? Cerrar por seguridad
-                     self.writer.release()
-                     self.writer = None
+                if not self.is_recording and self.ffmpeg_process:
+                     # Si dejamos de grabar y se vació la cola -> cerrar
+                     self._close_writer()
                 continue
 
             msg_type = item.get('type')
 
             if msg_type == 'START':
-                if self.writer:
-                    self.writer.release()
+                self._close_writer() # Asegurar limpieza anterior
                 
                 filename = item['filename']
-                print(f"🎥 [Cam {self.cam_id}] Iniciando Writer para: {filename}")
-                self.writer = self._init_writer(filename)
-                
-                if not self.writer or not self.writer.isOpened():
-                    print(f"❌ [Cam {self.cam_id}] No se pudo iniciar grabación")
-                    self.writer = None
+                print(f"🎥 [Cam {self.cam_id}] FFMPEG WRITER START: {filename}")
+                self.ffmpeg_process = self._start_ffmpeg_writer(filename)
 
             elif msg_type == 'FRAME':
-                if self.writer and self.writer.isOpened():
+                if self.ffmpeg_process:
                     try:
-                        self.writer.write(item['data'])
+                        self.ffmpeg_process.stdin.write(item['data'].tobytes())
                     except Exception as e:
-                         print(f"⚠️ Error escritura frame: {e}")
+                         # Broken pipe?
+                         print(f"⚠️ Error escritura frame ffmpeg: {e}")
+                         self._close_writer()
 
             elif msg_type == 'STOP':
-                print(f"🛑 [Cam {self.cam_id}] Deteniendo grabación")
-                if self.writer:
-                    self.writer.release()
-                    self.writer = None
-                    print(f"💾 [Cam {self.cam_id}] Archivo cerrado correctamente")
+                print(f"🛑 [Cam {self.cam_id}] Finalizando grabación...")
+                self._close_writer()
+                print(f"💾 [Cam {self.cam_id}] Evidencia guardada.")
 
-        # Cleanup final
-        if self.writer:
-            self.writer.release()
+        self._close_writer()
+        
+    def _close_writer(self):
+        if self.ffmpeg_process:
+            try:
+                if self.ffmpeg_process.stdin:
+                    self.ffmpeg_process.stdin.close()
+                self.ffmpeg_process.wait(timeout=2)
+            except Exception as e:
+                print(f"⚠️ Error cerrando ffmpeg: {e}")
+                self.ffmpeg_process.kill()
+            self.ffmpeg_process = None
 
 
 class CameraProcess(mp.Process):
@@ -153,11 +183,12 @@ class CameraProcess(mp.Process):
     Proceso independiente para manejo de cámara con CERO LATENCIA + SENTINEL MODE.
     """
     
-    def __init__(self, cam_id, processor_id, rtsp_url, width=1280, height=720, fps=15):
+    def __init__(self, cam_id, processor_id, rtsp_url, alert_queue, width=1280, height=720, fps=15):
         super().__init__()
         self.cam_id = cam_id
         self.processor_id = processor_id
         self.rtsp_url = rtsp_url
+        self.alert_queue = alert_queue  # Cola para enviar alertas al Main Process
         self.target_width = width
         self.target_height = height
         self.target_fps = fps
@@ -175,12 +206,15 @@ class CameraProcess(mp.Process):
 
         # Sentinel Mode
         self.video_thread = None
-        self.is_intrusion_active = False
-        self.intrusion_start_time = 0
-        self.last_intrusion_time = 0
+        self.is_intrusion_active = False # Flag local para estado
         self.cooldown_seconds = 5.0
-        self.last_alert_time = 0
-        self.alert_interval = 10.0
+        self.last_intrusion_time = 0
+        
+        # Determinar Host URL (para evidence links absolutos)
+        self.server_ip = get_ip_address()
+        self.server_port = 5000 
+        self.base_url = f"http://{self.server_ip}:{self.server_port}"
+        print(f"🌍 [Cam {self.cam_id}] Base URL para evidencia: {self.base_url}")
 
     def _setup_shared_memory(self):
         try:
@@ -279,71 +313,71 @@ class CameraProcess(mp.Process):
         except Exception as e:
             pass
 
+    def _send_alert(self, msg, level="PRECAUCION", context=None):
+        """Envia alerta a la cola del Main Process"""
+        try:
+            alert_payload = {
+                "cam_id": self.cam_id,
+                "msg": msg,
+                "level": level,
+                "context": context or {}
+            }
+            self.alert_queue.put(alert_payload)
+        except Exception as e:
+            print(f"❌ [Cam {self.cam_id}] Error enviando alerta: {e}")
+
     def _handle_sentinel_mode(self, result, frame):
         try:
             is_intrusion = result.get('intrusion', False)
             intruders_count = result.get('count', 0)
             current_time = time.time()
 
+            # Lógica simplificada: 1 Alerta ÚNICA al detectar
+            
             # Estado 1: Intrusión Activa
             if is_intrusion:
                 self.last_intrusion_time = current_time
                 
-                if not self.video_thread.is_recording:
+                if not self.is_intrusion_active:
+                    # NUEVA INTRUSIÓN
+                    self.is_intrusion_active = True
                     print(f"🚨 [Cam {self.cam_id}] INTRUSIÓN DETECTADA - Iniciando grabación")
-                    # Pasamos el frame actual para usarlo de thumbnail
+                    
+                    # Iniciar grabación
                     filename, thumbname = self.video_thread.start_recording(first_frame=frame)
                     
                     if filename:
-                        alerts_engine.create_alert(
-                            self.cam_id,
-                            f"¡INTRUSO DETECTADO! Iniciando grabación...",
+                        # URLs ABSOLUTAS
+                        video_url = f"{self.base_url}/static/evidence/{filename}"
+                        thumb_url = f"{self.base_url}/static/evidence/{thumbname}" if thumbname else None
+                        
+                        # ALERTA ÚNICA CON EVIDENCIA
+                        self._send_alert(
+                            f"¡INTRUSO DETECTADO! - {intruders_count} Personas",
                             "CRITICAL",
                             {
                                 "count": intruders_count, 
-                                "video": f"/static/evidence/{filename}",
-                                "thumbnail": f"/static/evidence/{thumbname}" if thumbname else None
+                                "video": video_url,
+                                "thumbnail": thumb_url
                             }
                         )
-                else:
-                    if current_time - self.last_alert_time > self.alert_interval:
-                         alerts_engine.create_alert(
-                            self.cam_id,
-                            f"Intrusión en curso - {intruders_count} sospechoso(s)",
-                            "CRITICAL",
-                            {"count": intruders_count, "video_status": "recording"}
-                        )
-                         self.last_alert_time = current_time
-
+                    # NO enviamos más alertas "en curso" para evitar spam
+                
             # Estado 2: Sin intrusión (posible Cooldown)
             else:
-                if self.video_thread.is_recording:
+                if self.is_intrusion_active:
                     if current_time - self.last_intrusion_time > self.cooldown_seconds:
                         print(f"✅ [Cam {self.cam_id}] Zona despejada - Deteniendo grabación")
                         
-                        # Guardar referencias
-                        last_file = self.video_thread.current_filename
-                        last_thumb = self.video_thread.current_thumbnail
-                        
+                        self.is_intrusion_active = False
                         self.video_thread.stop_recording()
                         
-                        # Alerta Final
-                        context = {}
-                        if last_file:
-                            context["video"] = f"/static/evidence/{last_file}"
-                        if last_thumb:
-                            context["thumbnail"] = f"/static/evidence/{last_thumb}"
-                            
-                        alerts_engine.create_alert(
-                            self.cam_id,
-                            f"Intrusión finalizada. Evidencia guardada.",
-                            "PRECAUCION",
-                            context
-                        )
+                        # NO Generamos alerta de "finalizado", solo cerramos el video.
+                        # El usuario pidió "UNA DE LA DETECCION DEL INTRUSO MAS LA EVIDENCIA"
+                        # Si mandamos otra aquí, son dos.
 
-            # Enviamos frame INCONDICIONALMENTE si is_recording es True
-            # El hilo decidirá si lo escribe (si hay writer activo)
-            if self.video_thread.is_recording:
+            # Enviamos frame SIEMPRE si estamos en "modo intrusión activa" (grabando)
+            if self.is_intrusion_active:
                 self.video_thread.add_frame(frame)
 
         except Exception as e:

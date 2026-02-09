@@ -5,10 +5,12 @@ import subprocess
 import cv2
 import multiprocessing as mp
 import numpy as np
+import queue
 from multiprocessing import shared_memory
 from config.config_manager import device_config
 from modules.vision.processors import get_processor_class
 from modules.analytics.specialists.system_logger import system_logger
+from modules.analytics.specialists.alerts_engine import alerts_engine
 from modules.vision.camera_process import CameraProcess
 
 # CRÍTICO: Usar 'spawn' para evitar conflictos con eventlet/greenlets en los procesos hijos
@@ -28,6 +30,7 @@ class VisionManager:
     ✅ Watchdog monitorizando procesos (PID check)
     ✅ Shared Memory para API preview sin bloquear procesamiento
     ✅ Reinicio automático ante crashes
+    ✅ Cola centralizada de alertas (Main Process Emitter)
     """
     _instance = None
 
@@ -45,12 +48,38 @@ class VisionManager:
         self.lock = threading.Lock()
         self._initialized = True
         
+        # Cola de alertas (Proceso hijo -> Main Process -> SocketIO)
+        self.alert_queue = mp.Queue()
+        self._alert_thread = threading.Thread(target=self._alert_consumer_loop, daemon=True)
+        self._alert_thread.start()
+        
         # Watchdog
         self._watchdog_thread = None
         self._watchdog_running = False
         self._start_watchdog()
         
-        print("✅ VisionManager (MULTIPROCESS) inicializado")
+        print("✅ VisionManager (MULTIPROCESS + ALERT QUEUE) inicializado")
+
+    def _alert_consumer_loop(self):
+        """Consume alertas de los procesos hijos y las emite vía SocketIO (Main Context)"""
+        print("🔔 Alert Consumer Thread Iniciado")
+        while True:
+            try:
+                # Bloqueante con timeout para permitir cierre limpio si fuera necesario
+                alert_data = self.alert_queue.get(timeout=1.0)
+                
+                cam_id = alert_data.get('cam_id')
+                msg = alert_data.get('msg')
+                level = alert_data.get('level', 'PRECAUCION')
+                context = alert_data.get('context', {})
+                
+                # Llamar al Singleton en el proceso principal
+                alerts_engine.create_alert(cam_id, msg, level, context)
+                
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"❌ Error consumiendo alerta: {e}")
 
     def _start_watchdog(self):
         """Inicia thread watchdog para monitorear procesos de cámaras"""
@@ -121,12 +150,13 @@ class VisionManager:
                 print(f"❌ URL RTSP para cámara {cam_id} no encontrada")
                 return False
 
-            # Iniciar Proceso (CameraProcess)
+            # Iniciar Proceso (CameraProcess) passing ALERT QUEUE
             try:
                 process = CameraProcess(
                     cam_id=cam_id,
                     processor_id=processor_id,
                     rtsp_url=rtsp_url,
+                    alert_queue=self.alert_queue, # PASAR QUEUE
                     width=1280, 
                     height=720,
                     fps=15 
