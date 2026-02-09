@@ -7,6 +7,10 @@ import base64
 import logging
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +66,15 @@ def save_evidence_from_base64(
 
         logger.info(f"✅ Imagen guardada: {filename} ({len(image_bytes)} bytes)")
 
-        # 7. Retornar URLs
+        # 7. Obtener Base URL para Retornar URLs ABSOLUTAS
+        # Prioridad: TAILSCALE_IP > HOSTNAME > localhost
+        server_ip = os.getenv("TAILSCALE_IP", "localhost")
+        server_port = os.getenv("SERVER_PORT", "5000")
+        base_url = f"http://{server_ip}:{server_port}"
+
         return {
             'type': 'image',
-            'url': f"/static/evidence/alerts/{filename}",
+            'url': f"{base_url}/static/evidence/alerts/{filename}",
             'thumbnail_url': None,  # Por ahora sin miniatura
             'local_path': str(file_path),
             'size_bytes': len(image_bytes)

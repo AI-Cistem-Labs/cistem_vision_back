@@ -83,20 +83,25 @@ def health():
 
 
 # ============================================================
-# RUTA: SERVIR MAPAS
+# RUTAS PARA SERVIR ARCHIVOS ESTÁTICOS
 # ============================================================
+
 @app.route('/static/maps/<path:filename>')
 def serve_map(filename):
-    """
-    Sirve imágenes de mapas desde static/maps/
-
-    Ejemplo de uso:
-    http://localhost:5000/static/maps/mapanix.jpeg
-    """
+    """Sirve imágenes de mapas desde static/maps/"""
     try:
-        return send_from_directory('static/maps', filename)
+        return send_from_directory(os.path.join(app.root_path, 'static', 'maps'), filename)
     except FileNotFoundError:
         return {'error': 'Mapa no encontrado'}, 404
+
+
+@app.route('/static/evidence/alerts/<path:filename>')
+def serve_alert_evidence(filename):
+    """Sirve imágenes de evidencia de alertas desde static/evidence/alerts/"""
+    try:
+        return send_from_directory(os.path.join(app.root_path, 'static', 'evidence', 'alerts'), filename)
+    except FileNotFoundError:
+        return {'error': 'Evidencia no encontrada'}, 404
 
 
 # ============================================================

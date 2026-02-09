@@ -211,8 +211,9 @@ class CameraProcess(mp.Process):
         self.last_intrusion_time = 0
         
         # Determinar Host URL (para evidence links absolutos)
-        self.server_ip = get_ip_address()
-        self.server_port = 5000 
+        # Prioridad: TAILSCALE_IP > IP Local Autodetectada
+        self.server_ip = os.getenv("TAILSCALE_IP") or get_ip_address()
+        self.server_port = os.getenv("SERVER_PORT", "5000")
         self.base_url = f"http://{self.server_ip}:{self.server_port}"
         print(f"🌍 [Cam {self.cam_id}] Base URL para evidencia: {self.base_url}")
 
