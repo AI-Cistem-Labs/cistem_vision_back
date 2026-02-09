@@ -401,11 +401,11 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     # Error en una detección, continuar con las demás
                     continue
 
-            # ✅ ALERTA mejorada
+            # ✅ ALERTA mejorada - SUPERIOR DERECHA
             if self.current_intruders > 0:
                 try:
                     alert_text = f"ALERTA: {self.current_intruders} INTRUSO(S)"
-                    font_scale = 1 # ✅ Más grande
+                    font_scale = 1
 
                     # Background de alerta
                     (text_w, text_h), _ = cv2.getTextSize(
@@ -415,12 +415,16 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         3
                     )
 
+                    # 🔧 POSICIÓN SUPERIOR DERECHA
+                    frame_width = frame.shape[1]
+                    x_right = frame_width - text_w - 30  # 30px margen derecho
+                    
                     # Background rojo semitransparente
                     overlay = frame.copy()
                     cv2.rectangle(
                         overlay,
-                        (5, 5),
-                        (text_w + 25, text_h + 25),
+                        (x_right, 5),
+                        (x_right + text_w + 20, text_h + 25),
                         (0, 0, 200),
                         -1
                     )
@@ -429,8 +433,8 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     # Borde
                     cv2.rectangle(
                         frame,
-                        (5, 5),
-                        (text_w + 25, text_h + 25),
+                        (x_right, 5),
+                        (x_right + text_w + 20, text_h + 25),
                         (0, 0, 255),
                         3,
                         cv2.LINE_AA
@@ -440,7 +444,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     cv2.putText(
                         frame,
                         alert_text,
-                        (17, text_h + 12),
+                        (x_right + 12, text_h + 12),
                         cv2.FONT_ITALIC,
                         font_scale,
                         (0, 0, 0),
@@ -452,7 +456,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     cv2.putText(
                         frame,
                         alert_text,
-                        (15, text_h + 10),
+                        (x_right + 10, text_h + 10),
                         cv2.FONT_ITALIC,
                         font_scale,
                         (255, 255, 255),
@@ -462,6 +466,5 @@ class IntrusionDetectorProcessor(BaseProcessor):
 
                 except Exception as e:
                     print(f"⚠️ Error dibujando alerta: {e}")
-
         except Exception as e:
             print(f"❌ Error en draw_detections: {e}")
