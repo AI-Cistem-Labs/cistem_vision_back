@@ -4,15 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Commit estable de transmision de video con procesamiento y transmision con WebRTC">
-      <change afterPath="$PROJECT_DIR$/modules/robot/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/modules/robot/client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/modules/robot/handlers.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/modules/robot/validators.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/monitor_robot_data.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/robot_commander.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/robot_server_receiver.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
+    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde">
+      <change afterPath="$PROJECT_DIR$/robot_commander_FULL.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/robot_commander_completo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/device.json" beforeDir="false" afterPath="$PROJECT_DIR$/config/device.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/controllers/station_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/controllers/station_controller.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -278,7 +274,15 @@
       <option name="project" value="LOCAL" />
       <updated>1770578464369</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde">
+      <option name="closed" value="true" />
+      <created>1770593592377</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1770593592377</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -341,6 +345,7 @@
     <MESSAGE value="Web RTC enviando video normal y video procesado de la manera más sencilla &#10;&#10;Habilitado el canal camera_10XX_ai&#10;&#10;3 procesadores simplificados pero sin el muestreo de las personas ni detección de las mismas&#10;&#10;Flujo de coches agregado  &#10;&#10;Se agrega yolo11s.pt como red neuronal" />
     <MESSAGE value="Optimizacion de video con frames trabados" />
     <MESSAGE value="Commit estable de transmision de video con procesamiento y transmision con WebRTC" />
-    <option name="LAST_COMMIT_MESSAGE" value="Commit estable de transmision de video con procesamiento y transmision con WebRTC" />
+    <MESSAGE value="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde" />
+    <option name="LAST_COMMIT_MESSAGE" value="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde" />
   </component>
 </project>

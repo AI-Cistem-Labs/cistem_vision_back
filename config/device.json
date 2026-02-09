@@ -16,6 +16,7 @@
   "cameras": [
     {
       "cam_id": 1001,
+      "type": "Camera",
       "label": "Sala de Reuniones",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
       "position": [
@@ -31,6 +32,7 @@
     },
     {
       "cam_id": 1002,
+      "type": "Camera",
       "label": "Acceso Oficina y Taller",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1002",
       "position": [
@@ -46,6 +48,7 @@
     },
     {
       "cam_id": 1003,
+      "type": "Camera",
       "label": "Almacen Interno",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1003",
       "position": [
@@ -61,6 +64,7 @@
     },
     {
       "cam_id": 1004,
+      "type": "Camera",
       "label": "Acceso a Oficinas",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1004",
       "position": [
@@ -76,6 +80,7 @@
     },
     {
       "cam_id": 1005,
+      "type": "Camera",
       "label": "Oficina",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1005",
       "position": [
@@ -91,6 +96,7 @@
     },
     {
       "cam_id": 1006,
+      "type": "Camera",
       "label": "Estacionamiento Subterraneo",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1006",
       "position": [
@@ -106,6 +112,7 @@
     },
     {
       "cam_id": 1007,
+      "type": "Camera",
       "label": "Almacen / Zona de Descarga",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1007",
       "position": [
