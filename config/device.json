@@ -19,15 +19,9 @@
       "type": "Camera",
       "label": "Sala de Reuniones",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
-      "position": [
-        22.471540178571427,
-        35.2359693877551
-      ],
+      "position": [22.471540178571427, 35.2359693877551],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 2
     },
     {
@@ -35,15 +29,9 @@
       "type": "Camera",
       "label": "Acceso Oficina y Taller",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1002",
-      "position": [
-        90,
-        70
-      ],
+      "position": [90, 70],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 1
     },
     {
@@ -51,15 +39,9 @@
       "type": "Camera",
       "label": "Almacen Interno",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1003",
-      "position": [
-        40,
-        50
-      ],
+      "position": [40, 50],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 1
     },
     {
@@ -67,15 +49,9 @@
       "type": "Camera",
       "label": "Acceso a Oficinas",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1004",
-      "position": [
-        60,
-        70
-      ],
+      "position": [60, 70],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 2
     },
     {
@@ -83,15 +59,9 @@
       "type": "Camera",
       "label": "Oficina",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1005",
-      "position": [
-        50,
-        50
-      ],
+      "position": [50, 50],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 2
     },
     {
@@ -99,15 +69,9 @@
       "type": "Camera",
       "label": "Estacionamiento Subterraneo",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1006",
-      "position": [
-        60,
-        60
-      ],
+      "position": [60, 60],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 2
     },
     {
@@ -115,15 +79,9 @@
       "type": "Camera",
       "label": "Almacen / Zona de Descarga",
       "rtsp_url": "rtsp://100.73.141.61:8554/cam_1007",
-      "position": [
-        80,
-        80
-      ],
+      "position": [80, 80],
       "status": true,
-      "available_processors": [
-        1,
-        2
-      ],
+      "available_processors": [1, 2],
       "active_processor": 2
     }
   ]
