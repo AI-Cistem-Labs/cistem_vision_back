@@ -4,12 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Commit con comunicacion al robot al 100% y con guardado de las alertas  &#10;&#10;Pendiente actualizar para enviar el campo de type del endpoint Get Stations &#10;&#10;se crea evidence_saver.py para hacer su función. &#10;&#10;se actualiza handlers.py&#10;&#10;robot_commander.py notifica el guardado de la evidencia&#10;&#10;test_evidence_simple.py cumple su función de guardado sin conexión a robot.">
+    <list default="true" id="a59cb1c0-c5fd-44c1-8b85-77320793832f" name="Changes" comment="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo">
       <change afterPath="$PROJECT_DIR$/controllers/robot_controller.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test_get_stations.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/device.json" beforeDir="false" afterPath="$PROJECT_DIR$/config/device.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/controllers/station_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/controllers/station_controller.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -300,7 +296,15 @@
       <option name="project" value="LOCAL" />
       <updated>1770613175521</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo">
+      <option name="closed" value="true" />
+      <created>1770616959645</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1770616959645</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -366,6 +370,7 @@
     <MESSAGE value="Commit con comunicacion al robot al 90%. &#10;&#10;Pendiente la recepcion del feedback del robot. &#10;&#10;Se crea modulo/robot para la comunicacion con el robot, donde se manejan y verifican el formato de recibimiento. &#10;&#10;robot_server_receiver.py muestra la info y cámaras y alertas&#10;&#10;monitor_robot_data.py muestra las estructuras JSON recibidas completamente por parte de la info, alertas y cámara. URL de la cámara funcional. &#10;&#10;robot_commander.py envía las instrucciones completas y el robot responde" />
     <MESSAGE value="Commit con comunicacion al robot al 100%. &#10;&#10;Pendiente el guardar la evidencia y actualizar para el campo type: cámara/robot&#10;&#10;se crea robot_commander_completo.py con chat que hace todas las funciones&#10;&#10;robot_commander_FULL.py no logró conectarse" />
     <MESSAGE value="Commit con comunicacion al robot al 100% y con guardado de las alertas  &#10;&#10;Pendiente actualizar para enviar el campo de type del endpoint Get Stations &#10;&#10;se crea evidence_saver.py para hacer su función. &#10;&#10;se actualiza handlers.py&#10;&#10;robot_commander.py notifica el guardado de la evidencia&#10;&#10;test_evidence_simple.py cumple su función de guardado sin conexión a robot." />
-    <option name="LAST_COMMIT_MESSAGE" value="Commit con comunicacion al robot al 100% y con guardado de las alertas  &#10;&#10;Pendiente actualizar para enviar el campo de type del endpoint Get Stations &#10;&#10;se crea evidence_saver.py para hacer su función. &#10;&#10;se actualiza handlers.py&#10;&#10;robot_commander.py notifica el guardado de la evidencia&#10;&#10;test_evidence_simple.py cumple su función de guardado sin conexión a robot." />
+    <MESSAGE value="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo" />
+    <option name="LAST_COMMIT_MESSAGE" value="Commit con comunicacion al robot al 100% y con guardado de las alertas  y envío del nuevo campo type &#10;&#10;Pendiente la interconexión y rol de intermediario entre front y perro robótico &#10;&#10;device.json se actualiza para enviar el campo type&#10;&#10;y station_controller.py se actualiza para enviarlo&#10;&#10;test_get_stations.py se usa para verificar el envío del get station completo" />
   </component>
 </project>

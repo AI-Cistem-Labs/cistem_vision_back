@@ -37,19 +37,13 @@ import controllers.station_controller
 import controllers.logs_controller
 import controllers.alerts_controller
 import controllers.camera_controller
-import controllers.video_controller 
+import controllers.video_controller
+import controllers.robot_controller  # ⭐ NUEVO: Controlador del robot
 print("✅ Controladores registrados\n")
 
-
-# Evento de conexión
-@socketio.on('connect')
-def handle_connect():
-    print("🔌 Cliente conectado")
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print("🔌 Cliente desconectado")
+# ⭐ NUEVO: Registrar rutas HTTP del robot
+from controllers import robot_controller
+robot_controller.register_robot_routes(app)
 
 
 # ============================================================
@@ -85,15 +79,15 @@ def health():
 
 
 # ============================================================
-# NUEVA RUTA: SERVIR MAPAS
+# RUTA: SERVIR MAPAS
 # ============================================================
-@app.route('/home/nix/PycharmProjects/cistem_vision_back/static/maps/mapanix.jpeg')
+@app.route('/static/maps/<filename>')
 def serve_map(filename):
     """
     Sirve imágenes de mapas desde static/maps/
 
     Ejemplo de uso:
-    http://localhost:5000/static/maps/laboratorio_principal.png
+    http://localhost:5000/static/maps/mapanix.jpeg
     """
     try:
         return send_from_directory('static/maps', filename)
@@ -110,7 +104,7 @@ if __name__ == '__main__':
     DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
     print("=" * 60)
-    print("🎥 CISTEM VISION BACKEND v1.1")
+    print("🎥 CISTEM VISION BACKEND v1.1 + ROBOT INTEGRATION")
     print("=" * 60)
     print(f"🚀 Servidor iniciando en puerto {PORT}")
     print(f"🐛 Modo debug: {DEBUG}")
@@ -142,6 +136,12 @@ if __name__ == '__main__':
     print(f"✅ Servidor listo en http://localhost:{PORT}")
     print(f"✅ WebSocket en ws://localhost:{PORT}")
     print(f"🗺️  Mapas en http://localhost:{PORT}/static/maps/")
+    print()
+    print("🤖 Robot endpoints:")
+    print(f"   - POST http://localhost:{PORT}/robot/command")
+    print(f"   - GET  http://localhost:{PORT}/robot/status")
+    print(f"   - GET  http://localhost:{PORT}/robot/alerts")
+    print(f"   - GET  http://localhost:{PORT}/robot/cameras")
     print("=" * 60)
     print()
 

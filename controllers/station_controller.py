@@ -55,7 +55,7 @@ def handle_get_stations(data):
 
             cameras_data.append({
                 'cam_id': cam['cam_id'],
-                'type': cam.get('type', 'Camera'),  # ⭐ NUEVO: tipo de cámara
+                'type': cam.get('type', 'Camera'),  # ⭐ Tipo de cámara
                 'label': cam['label'],
                 'status': cam['status'],
                 'position': cam['position'],
@@ -65,10 +65,10 @@ def handle_get_stations(data):
 
         # ⭐ NUEVO: Agregar cámaras del robot si están disponibles
         try:
-            # Importar handler del robot
-            from robot_commander import handler
+            from controllers.robot_controller import get_robot_handler
 
-            robot_cameras = handler.get_robot_cameras()
+            robot_handler = get_robot_handler()
+            robot_cameras = robot_handler.get_robot_cameras()
 
             for cam_id, cam_info in robot_cameras.items():
                 cameras_data.append({
