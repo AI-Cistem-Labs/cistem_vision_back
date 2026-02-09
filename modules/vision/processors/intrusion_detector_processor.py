@@ -137,14 +137,14 @@ class IntrusionDetectorProcessor(BaseProcessor):
     def process_frame(self, frame):
         """
         Procesamiento INFALIBLE
-
-        🛡️ Validaciones y try-catch en cada paso
+        Retorna: dict con resultado de detección {'intrusion': bool, 'count': int}
         """
+        result = {'intrusion': False, 'count': 0}
         try:
             self.increment_frame_count()
 
             if frame is None or frame.size == 0:
-                return frame
+                return result
 
             h, w = frame.shape[:2]
 
@@ -156,31 +156,37 @@ class IntrusionDetectorProcessor(BaseProcessor):
             should_detect = (self._frame_counter % self._detection_interval == 0)
 
             if should_detect and self.model_loaded:
-                self._run_detection(frame, w, h)
+                result = self._run_detection(frame, w, h)
+            else:
+                 # Maintain previous state if skipping
+                 result = {'intrusion': self.current_intruders > 0, 'count': self.current_intruders}
 
-            return frame
+            return result
 
         except Exception as e:
             print(f"❌ Error en process_frame: {e}")
-            return frame
+            return result
 
     def _run_detection(self, original_frame, original_width, original_height):
         """
         Detección INFALIBLE con fallback
-
-        🛡️ Try-catch exhaustivo
-        🛡️ Validación de todos los datos
+        Retorna estado de intrusión para Sentinel Mode
         """
+        detection_result = {
+            'intrusion': False,
+            'count': 0
+        }
+
         try:
             if self.model is None or not self.model_loaded:
-                return
+                return detection_result
 
             # Validar frame
             if original_frame is None or original_frame.size == 0:
-                return
+                return detection_result
 
             if original_width <= 0 or original_height <= 0:
-                return
+                return detection_result
 
             # Frame de detección
             detection_width = 640
@@ -194,7 +200,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                 )
             except Exception as e:
                 print(f"⚠️ Error en resize: {e}")
-                return
+                return detection_result
 
             scale_x = original_width / detection_width
             scale_y = original_height / detection_height
@@ -214,7 +220,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                 self._detection_errors += 1
                 if self._detection_errors % 10 == 0:
                     print(f"⚠️ Error en YOLO inference ({self._detection_errors} errores): {e}")
-                return
+                return detection_result
 
             detections = []
             intruders_count = 0
@@ -281,23 +287,15 @@ class IntrusionDetectorProcessor(BaseProcessor):
             # Update
             self._cached_detections = detections
             self.current_intruders = intruders_count
-
-            # Alertas
-            if intruders_count > 0:
-                try:
-                    current_time = time.time()
-                    if current_time - self._last_alert_time > self._alert_cooldown:
-                        self.generate_alert(
-                            f"{intruders_count} intruso(s)",
-                            level="CRITICAL",
-                            context={"cam_id": self.cam_id, "count": intruders_count}
-                        )
-                        self._last_alert_time = current_time
-                except Exception as e:
-                    print(f"⚠️ Error generando alerta: {e}")
+            
+            detection_result['intrusion'] = (intruders_count > 0)
+            detection_result['count'] = intruders_count
+            
+            return detection_result
 
         except Exception as e:
             print(f"❌ Error en _run_detection: {e}")
+            return detection_result
 
     def draw_detections(self, frame):
         """

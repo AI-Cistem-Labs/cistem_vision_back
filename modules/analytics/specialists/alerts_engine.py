@@ -64,8 +64,23 @@ class AlertsEngine:
             "label": level,
             "read": False,
             "msg": message,
-            "context": context or {}
+            "context": context or {},
+            "evidence": None
         }
+
+        if context and ("video" in context or "thumbnail" in context):
+            evidence = {}
+            if "video" in context:
+                evidence["type"] = "video"
+                evidence["url"] = context["video"]
+            
+            if "thumbnail" in context:
+                evidence["thumbnail_url"] = context["thumbnail"]
+                # Si solo hay thumbnail y no video (ej. snapshot), ajustamos el tipo
+                if "type" not in evidence:
+                     evidence["type"] = "image"
+            
+            alert["evidence"] = evidence
 
         # Guardar en buffer
         self._get_alerts_buffer(cam_id).append(alert)
