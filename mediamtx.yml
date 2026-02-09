@@ -12,7 +12,7 @@ logDestinations: [stdout]
 # RTSP - ULTRA LOW LATENCY
 ###############################################
 rtspAddress: :8554
-protocols: [auto]
+protocols: [tcp]
 encryption: "no"
 serverKey: ""
 serverCert: ""
@@ -49,9 +49,9 @@ paths:
     # ✅ NO grabar (consume recursos)
     record: no
     
-    # ✅ PROTOCOLO auto (más estable que UDP)
-    sourceProtocol: auto
-    rtspTransport: auto
+    # ✅ PROTOCOLO tcp (más estable que UDP)
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
     # ✅ SIN ON-DEMAND (siempre activo = menos delay)
     runOnDemand: ""
@@ -59,56 +59,56 @@ paths:
     
   #-----------------------------------------
   # CÁMARAS ORIGEN (fuentes IP)
-  # ✅ sourceOnDemand: no =auto stream siempre activo
+  # ✅ sourceOnDemand: no =tcp stream siempre activo
   #-----------------------------------------
   
   cam_1001:
     source: rtsp://admin123:admin123@192.168.1.214:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1002:
     source: rtsp://admin123:admin123@192.168.1.228:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1003:
     source: rtsp://admin123:admin123@192.168.1.215:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1004:
     source: rtsp://admin123:admin123@192.168.1.82:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1005:
     source: rtsp://admin123:admin123@192.168.1.157:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1006:
     source: rtsp://admin123:admin123@192.168.1.31:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1007:
     source: rtsp://admin123:admin123@192.168.1.78:554/stream1
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   cam_1008:
     source: rtsp://10.223.237.185:8554/camera
     sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
+    sourceProtocol: tcp
+    rtspTransport: tcp
     
   #-----------------------------------------
   # STREAMS PROCESADOS (con AI overlay)
@@ -125,8 +125,8 @@ paths:
     readUser: ""
     readPass: ""
     
-    # ✅ auto para estabilidad
-    rtspTransport: auto
+    # ✅ tcp para estabilidad
+    rtspTransport: tcp
     
   camera_1002_ai:
     publishUser: ""
@@ -134,7 +134,7 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto
+    rtspTransport: tcp
 
   camera_1003_ai:
     publishUser: ""
@@ -142,7 +142,7 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto
+    rtspTransport: tcp
     
   camera_1004_ai:
     publishUser: ""
@@ -150,7 +150,7 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto
+    rtspTransport: tcp
     
   camera_1005_ai:
     publishUser: ""
@@ -158,7 +158,7 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto
+    rtspTransport: tcp
   
   camera_1006_ai:
     publishUser: ""
@@ -166,7 +166,7 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto
+    rtspTransport: tcp
     
   camera_1007_ai:
     publishUser: ""
@@ -174,7 +174,7 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto
+    rtspTransport: tcp
     
   camera_1008_ai:
     publishUser: ""
@@ -182,188 +182,4 @@ paths:
     publishIPs: [127.0.0.1, 192.168.1.192]
     readUser: ""
     readPass: ""
-    rtspTransport: auto ###############################################
-# MediaMTX - CONFIGURACIÓN ULTRA LOW LATENCY
-# ✅ Optimizado para mantener calidad original
-###############################################
-
-api: yes
-apiAddress: :9997
-logLevel: warn
-logDestinations: [stdout]
-
-###############################################
-# RTSP - ULTRA LOW LATENCY
-###############################################
-rtspAddress: :8554
-protocols: [auto]
-encryption: "no"
-serverKey: ""
-serverCert: ""
-
-# ✅ TIMEOUTS CORTOS para detección rápida de desconexiones
-readTimeout: 10s
-writeTimeout: 10s
-readBufferCount: 512  # ✅ Buffer pequeño = menos latencia
-
-###############################################
-# HLS - DESHABILITADO (alta latencia)
-###############################################
-hls: no
-hlsAddress: ""
-
-###############################################
-# WebRTC - HABILITADO (opcional, baja latencia)
-###############################################
-webrtc: yes
-webrtcAddress: :8889
-webrtcICEServers2: []
-
-###############################################
-# PATHS - CONFIGURACIÓN GLOBAL
-###############################################
-paths:
-  all:
-    # ✅ Sin autenticación para red local
-    publishUser: ""
-    publishPass: ""
-    readUser: ""
-    readPass: ""
-    
-    # ✅ NO grabar (consume recursos)
-    record: no
-    
-    # ✅ PROTOCOLO auto (más estable que UDP)
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-    # ✅ SIN ON-DEMAND (siempre activo = menos delay)
-    runOnDemand: ""
-    runOnDemandRestart: no
-    
-  #-----------------------------------------
-  # CÁMARAS ORIGEN (fuentes IP)
-  # ✅ sourceOnDemand: no = stream siempre activo
-  #-----------------------------------------
-  
-  cam_1001:
-    source: rtsp://admin123:admin123@192.168.1.214:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1002:
-    source: rtsp://admin123:admin123@192.168.1.228:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1003:
-    source: rtsp://admin123:admin123@192.168.1.215:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1004:
-    source: rtsp://admin123:admin123@192.168.1.82:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1005:
-    source: rtsp://admin123:admin123@192.168.1.157:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1006:
-    source: rtsp://admin123:admin123@192.168.1.31:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1007:
-    source: rtsp://admin123:admin123@192.168.1.78:554/stream1
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  cam_1008:
-    source: rtsp://10.223.237.185:8554/camera
-    sourceOnDemand: no
-    sourceProtocol: auto
-    rtspTransport: auto
-    
-  #-----------------------------------------
-  # STREAMS PROCESADOS (con AI overlay)
-  # ✅ Estos son publicados por la Jetson via FFmpeg
-  #-----------------------------------------
-  
-  camera_1001_ai:
-    # ✅ Solo permitir publicación desde Jetson
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    
-    # ✅ Sin autenticación para lectura
-    readUser: ""
-    readPass: ""
-    
-    # ✅ auto para estabilidad
-    rtspTransport: auto
-    
-  camera_1002_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto
-
-  camera_1003_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto
-    
-  camera_1004_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto
-    
-  camera_1005_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto
-  
-  camera_1006_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto
-    
-  camera_1007_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto
-    
-  camera_1008_ai:
-    publishUser: ""
-    publishPass: ""
-    publishIPs: [127.0.0.1, 192.168.1.192]
-    readUser: ""
-    readPass: ""
-    rtspTransport: auto 
+    rtspTransport: tcp 

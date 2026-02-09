@@ -1,130 +1,130 @@
 {
-      "device_id": 101,
-      "device_label": "Jetson-Orin-Lab-01",
-      "device_type": "jetson_orin",
-      "location": {
-            "location_id": 1,
-            "label": "Laboratorio Principal",
-            "description": "Centro de vigilancia - Zona A",
-            "mapImageUrl": "http://100.93.152.93:5000/static/maps/mapanix.jpeg",
-            "isActive": true,
-            "mapDimensions": {
-                  "width": 1920,
-                  "height": 1080
-            }
-      },
-      "cameras": [
-            {
-                  "cam_id": 1001,
-                  "type": "Camera",
-                  "label": "Sala de Reuniones",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1001",
-                  "position": [
-                        22.471540178571427,
-                        35.2359693877551
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 2
-            },
-            {
-                  "cam_id": 1002,
-                  "type": "Camera",
-                  "label": "Acceso Oficina y Taller",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1002",
-                  "position": [
-                        90,
-                        70
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 1
-            },
-            {
-                  "cam_id": 1003,
-                  "type": "Camera",
-                  "label": "Almacen Interno",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1003",
-                  "position": [
-                        40,
-                        50
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 1
-            },
-            {
-                  "cam_id": 1004,
-                  "type": "Camera",
-                  "label": "Acceso a Oficinas",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1004",
-                  "position": [
-                        60,
-                        70
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 2
-            },
-            {
-                  "cam_id": 1005,
-                  "type": "Camera",
-                  "label": "Oficina",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1005",
-                  "position": [
-                        50,
-                        50
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 2
-            },
-            {
-                  "cam_id": 1006,
-                  "type": "Camera",
-                  "label": "Estacionamiento Subterraneo",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1006",
-                  "position": [
-                        60,
-                        60
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 2
-            },
-            {
-                  "cam_id": 1007,
-                  "type": "Camera",
-                  "label": "Almacen / Zona de Descarga",
-                  "rtsp_url": "rtsp://100.93.152.93:8554/cam_1007",
-                  "position": [
-                        80,
-                        80
-                  ],
-                  "status": true,
-                  "available_processors": [
-                        1,
-                        2
-                  ],
-                  "active_processor": 2
-            }
-      ]
+  "device_id": 101,
+  "device_label": "Jetson-Orin-Lab-01",
+  "device_type": "jetson_orin",
+  "location": {
+    "location_id": 1,
+    "label": "Laboratorio Principal",
+    "description": "Centro de vigilancia - Zona A",
+    "mapImageUrl": "http://100.93.152.93:5000/static/maps/mapanix.jpeg",
+    "isActive": true,
+    "mapDimensions": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "cameras": [
+    {
+      "cam_id": 1001,
+      "type": "Camera",
+      "label": "Sala de Reuniones",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1001",
+      "position": [
+        22.471540178571427,
+        35.2359693877551
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 2
+    },
+    {
+      "cam_id": 1002,
+      "type": "Camera",
+      "label": "Acceso Oficina y Taller",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1002",
+      "position": [
+        90,
+        70
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 1
+    },
+    {
+      "cam_id": 1003,
+      "type": "Camera",
+      "label": "Almacen Interno",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1003",
+      "position": [
+        40,
+        50
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 1
+    },
+    {
+      "cam_id": 1004,
+      "type": "Camera",
+      "label": "Acceso a Oficinas",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1004",
+      "position": [
+        60,
+        70
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 2
+    },
+    {
+      "cam_id": 1005,
+      "type": "Camera",
+      "label": "Oficina",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1005",
+      "position": [
+        50,
+        50
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 2
+    },
+    {
+      "cam_id": 1006,
+      "type": "Camera",
+      "label": "Estacionamiento Subterraneo",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1006",
+      "position": [
+        60,
+        60
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 2
+    },
+    {
+      "cam_id": 1007,
+      "type": "Camera",
+      "label": "Almacen / Zona de Descarga",
+      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1007",
+      "position": [
+        80,
+        80
+      ],
+      "status": true,
+      "available_processors": [
+        1,
+        2
+      ],
+      "active_processor": 2
+    }
+  ]
 }
