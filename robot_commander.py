@@ -21,8 +21,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Crear app Flask
-app = Flask(__name__)
+# Crear app Flask con soporte para archivos estáticos
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = 'cistem_robot_secret_2026'
 
 # Crear SocketIO con CORS habilitado
@@ -197,6 +197,34 @@ def get_robot_status():
     status = handler.get_robot_status(device_id)
     state = handler.get_robot_state(device_id)
     cameras = handler.get_robot_cameras()
+
+    return jsonify({
+        'connected': robot_sid is not None,
+        'robot_sid': robot_sid,
+        'device_id': device_id,
+        'status': status,
+        'state': state,
+        'cameras': cameras
+    })
+
+
+@app.route('/robot/alerts', methods=['GET'])
+def get_robot_alerts():
+    """Obtiene las alertas del robot (con evidencias guardadas localmente)"""
+    limit = request.args.get('limit', 10, type=int)
+    device_id = request.args.get('device_id', type=int)
+
+    alerts = handler.get_robot_alerts(limit=limit)
+
+    # Filtrar por device_id si se especifica
+    if device_id:
+        alerts = [a for a in alerts if a.get('device_id') == device_id]
+
+    return jsonify({
+        'success': True,
+        'count': len(alerts),
+        'alerts': alerts
+    })
 
     return jsonify({
         'connected': robot_sid is not None,

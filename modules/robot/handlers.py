@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 from .validators import RobotDataValidator
+from .evidence_saver import save_evidence_from_base64
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,31 @@ class RobotDataHandler:
 
         alert_id = validated['alert_id']
         level = validated['label']
+        device_id = validated.get('device_id', 0)
+
+        # ⭐ NUEVO: Guardar evidencia si viene en base64
+        if validated.get('evidence'):
+            evidence = validated['evidence']
+            evidence_url = evidence.get('url', '')
+
+            # Solo guardamos si es base64
+            if evidence_url.startswith('data:image'):
+                logger.info(f"💾 Guardando evidencia de alert {alert_id}...")
+
+                saved = save_evidence_from_base64(
+                    base64_data=evidence_url,
+                    alert_id=alert_id,
+                    device_id=device_id
+                )
+
+                if saved:
+                    # Reemplazar la evidencia con la URL local
+                    validated['evidence'] = saved
+                    logger.info(f"✅ Evidencia guardada: {saved['url']}")
+                else:
+                    logger.warning("⚠️ No se pudo guardar evidencia, se mantiene original")
+            else:
+                logger.info("📡 Evidencia ya es URL externa, no se guarda localmente")
 
         # Completar campos que pueda faltar
         completed_data = self._complete_alert_data(validated)
