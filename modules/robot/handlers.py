@@ -246,6 +246,6 @@ class RobotDataHandler:
         """Retorna estado de un robot específico"""
         return self.robot_status.get(device_id)
 
-    def get_robot_state(self, device_id: int) -> Optional[str]:
-        """Retorna el estado actual de un robot"""
-        return self.robot_states.get(device_id)
+    def get_robot_state(self, device_id: int) -> str:
+        """Retorna el estado actual de un robot. Default: in_home"""
+        return self.robot_states.get(device_id, 'in_home')
