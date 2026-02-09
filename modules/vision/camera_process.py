@@ -313,18 +313,34 @@ class CameraProcess(mp.Process):
         except Exception as e:
             pass
 
-    def _send_alert(self, msg, level="PRECAUCION", context=None):
-        """Envia alerta a la cola del Main Process"""
+    def _send_create_alert(self, msg, level="PRECAUCION", context=None, status="detected", button="Ver evento en curso"):
+        """Envia alerta CREATE a la cola del Main Process"""
         try:
             alert_payload = {
+                "action": "create",
                 "cam_id": self.cam_id,
                 "msg": msg,
                 "level": level,
-                "context": context or {}
+                "context": context or {},
+                "status": status,
+                "button": button
             }
             self.alert_queue.put(alert_payload)
         except Exception as e:
-            print(f"❌ [Cam {self.cam_id}] Error enviando alerta: {e}")
+            print(f"❌ [Cam {self.cam_id}] Error enviando creacion alerta: {e}")
+
+    def _send_update_alert(self, status="finished", button="Ver evidencia"):
+        """Envia alerta UPDATE a la cola del Main Process"""
+        try:
+            alert_payload = {
+                "action": "update",
+                "cam_id": self.cam_id,
+                "status": status,
+                "button": button
+            }
+            self.alert_queue.put(alert_payload)
+        except Exception as e:
+            print(f"❌ [Cam {self.cam_id}] Error enviando update alerta: {e}")
 
     def _handle_sentinel_mode(self, result, frame):
         try:
@@ -332,7 +348,7 @@ class CameraProcess(mp.Process):
             intruders_count = result.get('count', 0)
             current_time = time.time()
 
-            # Lógica simplificada: 1 Alerta ÚNICA al detectar
+            # Lógica: 1 Alerta ÚNICA al detectar (DETECTED) -> Update al finalizar (FINISHED)
             
             # Estado 1: Intrusión Activa
             if is_intrusion:
@@ -351,17 +367,18 @@ class CameraProcess(mp.Process):
                         video_url = f"{self.base_url}/static/evidence/{filename}"
                         thumb_url = f"{self.base_url}/static/evidence/{thumbname}" if thumbname else None
                         
-                        # ALERTA ÚNICA CON EVIDENCIA
-                        self._send_alert(
+                        # ALERTA 'DETECTED'
+                        self._send_create_alert(
                             f"¡INTRUSO DETECTADO! - {intruders_count} Personas",
                             "CRITICAL",
                             {
                                 "count": intruders_count, 
                                 "video": video_url,
                                 "thumbnail": thumb_url
-                            }
+                            },
+                            status="detected",
+                            button="Ver evento en curso"
                         )
-                    # NO enviamos más alertas "en curso" para evitar spam
                 
             # Estado 2: Sin intrusión (posible Cooldown)
             else:
@@ -372,9 +389,11 @@ class CameraProcess(mp.Process):
                         self.is_intrusion_active = False
                         self.video_thread.stop_recording()
                         
-                        # NO Generamos alerta de "finalizado", solo cerramos el video.
-                        # El usuario pidió "UNA DE LA DETECCION DEL INTRUSO MAS LA EVIDENCIA"
-                        # Si mandamos otra aquí, son dos.
+                        # ALERTA UPDATE 'FINISHED'
+                        self._send_update_alert(
+                            status="finished",
+                            button="Ver evidencia"
+                        )
 
             # Enviamos frame SIEMPRE si estamos en "modo intrusión activa" (grabando)
             if self.is_intrusion_active:

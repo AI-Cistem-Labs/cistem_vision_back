@@ -43,9 +43,9 @@ class AlertsEngine:
             # En modo test o sin servidor, solo ignorar
             pass
 
-    def create_alert(self, cam_id, message, level="PRECAUCION", context=None):
+    def create_alert(self, cam_id, message, level="PRECAUCION", context=None, status="detected", button="Ver evento en curso"):
         """
-        Crea y envía una alerta al frontend
+        Crea y envía una alerta al frontend con status y button
         """
         device_info = device_config.get_device_info()
         location_info = device_config.get_location_info()
@@ -63,7 +63,9 @@ class AlertsEngine:
             "read": False,
             "msg": message,
             "context": context or {},
-            "evidence": None
+            "evidence": None,
+            "status": status,      # NEW
+            "button": button       # NEW
         }
 
         if context and ("video" in context or "thumbnail" in context):
@@ -91,6 +93,31 @@ class AlertsEngine:
         print(f"{icon} [{level}] Cam {cam_id}: {message}")
 
         return alert
+
+    def update_last_alert(self, cam_id, status="finished", button="Ver evidencia"):
+        """
+        Actualiza la última alerta de la cámara y la re-emite con el mismo ID
+        """
+        buffer = self._get_alerts_buffer(cam_id)
+        if not buffer:
+            return None
+            
+        # Obtener la última alerta (referencia mutable)
+        last_alert = buffer[-1]
+        
+        # Idempotencia: Si ya está finalizada, no hacer nada
+        if last_alert.get("status") == "finished":
+            return None
+
+        # Actualizar campos
+        last_alert["status"] = status
+        last_alert["button"] = button
+        
+        # RE-EMITIR como 'new_alert' (reescritura)
+        self._emit_to_frontend('new_alert', last_alert)
+        print(f"🔄 [UPDATE] Alert {last_alert['alert_id']} -> Status: {status}")
+        
+        return last_alert
 
     def get_alerts(self, cam_id):
         """Obtiene alertas de una cámara"""

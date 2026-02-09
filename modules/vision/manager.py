@@ -68,13 +68,24 @@ class VisionManager:
                 # Bloqueante con timeout para permitir cierre limpio si fuera necesario
                 alert_data = self.alert_queue.get(timeout=1.0)
                 
+                action = alert_data.get('action', 'create') # 'create' or 'update'
                 cam_id = alert_data.get('cam_id')
-                msg = alert_data.get('msg')
-                level = alert_data.get('level', 'PRECAUCION')
-                context = alert_data.get('context', {})
                 
-                # Llamar al Singleton en el proceso principal
-                alerts_engine.create_alert(cam_id, msg, level, context)
+                if action == 'create':
+                    msg = alert_data.get('msg')
+                    level = alert_data.get('level', 'PRECAUCION')
+                    context = alert_data.get('context', {})
+                    status = alert_data.get('status', 'detected')
+                    button = alert_data.get('button', 'Ver evento en curso')
+                    
+                    # Llamar al Singleton en el proceso principal
+                    alerts_engine.create_alert(cam_id, msg, level, context, status, button)
+                    
+                elif action == 'update':
+                    status = alert_data.get('status', 'finished')
+                    button = alert_data.get('button', 'Ver evidencia') # typo fix
+                    
+                    alerts_engine.update_last_alert(cam_id, status, button)
                 
             except queue.Empty:
                 continue
