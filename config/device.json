@@ -4,9 +4,9 @@
   "device_type": "jetson_orin",
   "location": {
     "location_id": 1,
-    "label": "Laboratorio Principal",
-    "description": "Centro de vigilancia - Zona A",
-    "mapImageUrl": "http://100.93.152.93:5000/static/maps/mapaaicistem.png",
+    "label": "Palacio Nacional",
+    "description": "C5 - Zona A",
+    "mapImageUrl": "http://100.93.152.93:5000/static/maps/palacionacional.jpeg",
     "isActive": true,
     "mapDimensions": {
       "width": 1920,

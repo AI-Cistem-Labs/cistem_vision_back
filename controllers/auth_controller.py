@@ -13,9 +13,9 @@ DEMO_USER = {
     "id_profile": 1,
     "email": "admin@cistemlabs.ai",
     "password": "123456",
-    "name": "Juan Pérez",
+    "name": "Luis Cisneros",
     "role": "Administrador",
-    "photo_url": "https://ui-avatars.com/api/?name=Juan+Perez&size=200"
+    "photo_url": "https://ui-avatars.com/api/?name=Luis+Cisneros&size=200"
 }
 
 JWT_SECRET = os.getenv('JWT_SECRET', 'cistem_secret_key_2025')

@@ -404,7 +404,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
             # ✅ ALERTA mejorada - SUPERIOR DERECHA
             if self.current_intruders > 0:
                 try:
-                    alert_text = f"ALERTA: {self.current_intruders} INTRUSO(S)"
+                    alert_text = f"ALERTA: INTRUSOS DETECTADOS"
                     font_scale = 1
 
                     # Background de alerta
@@ -453,6 +453,9 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     )
 
                     # Texto principal
+                    )
+
+                    # Texto con sombra
                     cv2.putText(
                         frame,
                         alert_text,
