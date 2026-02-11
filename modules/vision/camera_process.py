@@ -358,7 +358,7 @@ class CameraProcess(mp.Process):
                 if not self.is_intrusion_active:
                     # NUEVA INTRUSIÓN
                     self.is_intrusion_active = True
-                    print(f"🚨 [Cam {self.cam_id}] INTRUSIÓN DETECTADA - Iniciando grabación")
+                    print(f"🚨 [Cam {self.cam_id}] EVENTO DETECTADO - Iniciando grabación")
                     
                     # Iniciar grabación
                     filename, thumbname = self.video_thread.start_recording(first_frame=frame)
@@ -368,9 +368,12 @@ class CameraProcess(mp.Process):
                         video_url = f"{self.base_url}/static/evidence/{filename}"
                         thumb_url = f"{self.base_url}/static/evidence/{thumbname}" if thumbname else None
                         
+                        # Mensaje dinámico (Soporte para Contadores y Tráfico)
+                        alert_msg = result.get('alert_message', f"¡INTRUSO DETECTADO! - {intruders_count} Personas")
+
                         # ALERTA 'DETECTED'
                         self._send_create_alert(
-                            f"¡INTRUSO DETECTADO! - {intruders_count} Personas",
+                            alert_msg,
                             "CRITICAL",
                             {
                                 "count": intruders_count, 

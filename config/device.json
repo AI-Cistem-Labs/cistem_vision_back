@@ -6,7 +6,7 @@
     "location_id": 1,
     "label": "Laboratorio Principal",
     "description": "Centro de vigilancia - Zona A",
-    "mapImageUrl": "http://100.93.152.93:5000/static/maps/mapanix.jpeg",
+    "mapImageUrl": "http://100.93.152.93:5000/static/maps/mapaaicistem.png",
     "isActive": true,
     "mapDimensions": {
       "width": 1920,
@@ -26,7 +26,8 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
       "active_processor": 2
     },
@@ -42,7 +43,8 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
       "active_processor": 1
     },
@@ -58,25 +60,27 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
-      "active_processor": 1
+      "active_processor": 2
     },
     {
       "cam_id": 1004,
       "type": "Camera",
-      "label": "Acceso a Oficinas",
+      "label": "Oficina analogica",
       "rtsp_url": "rtsp://100.93.152.93:8554/cam_1004",
       "position": [
         60,
-        70
+        50
       ],
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
-      "active_processor": 2
+      "active_processor": 1
     },
     {
       "cam_id": 1005,
@@ -90,9 +94,10 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
-      "active_processor": 2
+      "active_processor": 1
     },
     {
       "cam_id": 1006,
@@ -106,9 +111,10 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
-      "active_processor": 2
+      "active_processor": 3
     },
     {
       "cam_id": 1007,
@@ -122,9 +128,10 @@
       "status": true,
       "available_processors": [
         1,
-        2
+        2,
+        3
       ],
-      "active_processor": 2
+      "active_processor": 3
     }
   ]
 }
