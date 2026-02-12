@@ -6,7 +6,7 @@
     "location_id": 1,
     "label": "Palacio Nacional",
     "description": "C5 - Zona A",
-    "mapImageUrl": "http://100.93.152.93:5000/static/maps/palacionacional.jpeg",
+    "mapImageUrl": "http://100.73.141.61:5000/static/maps/palacionacional.jpeg",
     "isActive": true,
     "mapDimensions": {
       "width": 1920,
@@ -18,7 +18,7 @@
       "cam_id": 1001,
       "type": "Camera",
       "label": "Sala de Reuniones",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1001",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1001",
       "position": [
         22.471540178571427,
         35.2359693877551
@@ -35,7 +35,7 @@
       "cam_id": 1002,
       "type": "Camera",
       "label": "Acceso Oficina y Taller",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1002",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1002",
       "position": [
         90,
         70
@@ -52,7 +52,7 @@
       "cam_id": 1003,
       "type": "Camera",
       "label": "Almacen Interno",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1003",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1003",
       "position": [
         40,
         50
@@ -69,7 +69,7 @@
       "cam_id": 1004,
       "type": "Camera",
       "label": "Oficina analogica",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1004",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1004",
       "position": [
         60,
         50
@@ -86,7 +86,7 @@
       "cam_id": 1005,
       "type": "Camera",
       "label": "Oficina",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1005",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1005",
       "position": [
         50,
         50
@@ -103,7 +103,7 @@
       "cam_id": 1006,
       "type": "Camera",
       "label": "Estacionamiento Subterraneo",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1006",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1006",
       "position": [
         60,
         60
@@ -120,7 +120,7 @@
       "cam_id": 1007,
       "type": "Camera",
       "label": "Almacen / Zona de Descarga",
-      "rtsp_url": "rtsp://100.93.152.93:8554/cam_1007",
+      "rtsp_url": "rtsp://100.73.141.61:8554/cam_1007",
       "position": [
         80,
         80

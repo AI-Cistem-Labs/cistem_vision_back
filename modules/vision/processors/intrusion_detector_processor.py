@@ -453,7 +453,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     )
 
                     # Texto principal
-                    )
+
 
                     # Texto con sombra
                     cv2.putText(
