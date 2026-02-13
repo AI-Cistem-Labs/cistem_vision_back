@@ -10,6 +10,9 @@ import time
 import cv2
 import base64
 
+# ⭐ NUEVO: Importar optimizador de video
+from modules.vision.video_stream_optimizer import get_stream_optimizer
+
 vision_manager = VisionManager()
 
 # Diccionario para rastrear clientes activos de streaming
@@ -20,7 +23,7 @@ active_streams = {}  # {cam_id: {client_id: thread}}
 def handle_get_camera_feed(data):
     """
     Evento: get_camera_feed
-    Inicia streaming de video procesado de una cámara
+    Inicia streaming de video procesado de una cámara con límite de concurrencia
     """
     try:
         # Verificar autenticación
@@ -69,19 +72,36 @@ def handle_get_camera_feed(data):
             })
             return
 
+        # ⭐ NUEVO: Obtener ID del cliente y verificar límite de streams
+        from flask import request
+        client_id = request.sid
+
+        optimizer = get_stream_optimizer()
+
+        # Verificar si se puede iniciar stream (límite de 4)
+        if not optimizer.can_start_stream(cam_id, client_id):
+            status = optimizer.get_status()
+            emit('get_camera_feed_response', {
+                'error': f'Límite de {status["max_streams"]} streams simultáneos alcanzado. Cierre otros streams primero.',
+                'active_streams': status['active_streams'],
+                'cameras_streaming': status['cameras_streaming'],
+                'cam_id': cam_id,
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
         # Iniciar VisionManager si no está activo para esta cámara
         if not vision_manager.is_camera_active(cam_id):
             print(f"🚀 Iniciando VisionManager para cámara {cam_id}...")
             if not vision_manager.start_camera(cam_id):
+                # ⭐ Liberar slot si falla
+                optimizer.stop_stream(cam_id, client_id)
+
                 emit('get_camera_feed_response', {
                     'error': 'Error al iniciar procesamiento de video',
                     'datetime': datetime.utcnow().isoformat() + 'Z'
                 })
                 return
-
-        # Obtener ID del cliente (SocketIO request)
-        from flask import request
-        client_id = request.sid
 
         # Iniciar thread de streaming para este cliente
         if cam_id not in active_streams:
@@ -109,7 +129,7 @@ def handle_get_camera_feed(data):
             'location_id': location_id,
             'device_id': device_id,
             'cam_id': cam_id,
-            'resolution': '1920x1080',  # Ajustar según configuración
+            'resolution': '1280x720',  # ⭐ Reducido de 1920x1080
             'fps': 30,
             'datetime': datetime.utcnow().isoformat() + 'Z'
         })
@@ -118,6 +138,18 @@ def handle_get_camera_feed(data):
 
     except Exception as e:
         print(f"❌ Error en get_camera_feed: {str(e)}")
+
+        # ⭐ Limpiar en caso de error
+        try:
+            from flask import request
+            client_id = request.sid
+            cam_id = data.get('cam_id')
+            if cam_id and client_id:
+                optimizer = get_stream_optimizer()
+                optimizer.stop_stream(cam_id, client_id)
+        except:
+            pass
+
         emit('get_camera_feed_response', {
             'error': 'Error al iniciar stream de video. Intente nuevamente',
             'datetime': datetime.utcnow().isoformat() + 'Z'
@@ -126,37 +158,53 @@ def handle_get_camera_feed(data):
 
 def stream_video(cam_id, client_id, stream_control):
     """
-    Thread que envía frames de video procesado al cliente
+    Thread que envía frames de video procesado al cliente con optimización
     """
     try:
         start_time = time.time()
         frame_count = 0
+
+        # ⭐ Obtener optimizador
+        optimizer = get_stream_optimizer()
 
         while not stream_control['stop']:
             # Obtener frame procesado del VisionManager
             frame = vision_manager.get_processed_frame(cam_id)
 
             if frame is not None:
-                # Convertir frame a base64 para enviar por SocketIO
-                _, buffer = cv2.imencode('.jpg', frame)
-                frame_base64 = base64.b64encode(buffer).decode('utf-8')
+                try:
+                    # ⭐ NUEVO: Optimizar frame antes de enviar
+                    # Esto reduce resolución a 720p y comprime con JPEG quality 65
+                    frame_bytes = optimizer.optimize_frame(frame, quality=65)
 
-                # Calcular tiempo activo
-                elapsed_time = int(time.time() - start_time)
-                hours = elapsed_time // 3600
-                minutes = (elapsed_time % 3600) // 60
-                seconds = elapsed_time % 60
-                time_active = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    if not frame_bytes:
+                        # Si optimización falla, intentar méodo original
+                        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
+                        frame_bytes = buffer.tobytes()
 
-                # Emitir frame al cliente específico
-                socketio.emit('video_frame', {
-                    'cam_id': cam_id,
-                    'frame': frame_base64,
-                    'time_active': time_active,
-                    'frame_number': frame_count
-                }, room=client_id)
+                    # Convertir a base64
+                    frame_base64 = base64.b64encode(frame_bytes).decode('utf-8')
 
-                frame_count += 1
+                    # Calcular tiempo activo
+                    elapsed_time = int(time.time() - start_time)
+                    hours = elapsed_time // 3600
+                    minutes = (elapsed_time % 3600) // 60
+                    seconds = elapsed_time % 60
+                    time_active = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                    # Emitir frame al cliente específico
+                    socketio.emit('video_frame', {
+                        'cam_id': cam_id,
+                        'frame': frame_base64,
+                        'time_active': time_active,
+                        'frame_number': frame_count
+                    }, room=client_id)
+
+                    frame_count += 1
+
+                except Exception as e:
+                    print(f"⚠️ Error procesando frame cam {cam_id}: {e}")
+                    # Continuar con siguiente frame
 
             # Control de FPS (30 FPS = ~33ms por frame)
             time.sleep(0.033)
@@ -166,7 +214,14 @@ def stream_video(cam_id, client_id, stream_control):
     except Exception as e:
         print(f"❌ Error en stream_video: {str(e)}")
     finally:
-        # Limpiar
+        # ⭐ NUEVO: Liberar recursos del optimizador
+        try:
+            optimizer = get_stream_optimizer()
+            optimizer.stop_stream(cam_id, client_id)
+        except Exception as e:
+            print(f"⚠️ Error liberando recursos: {e}")
+
+        # Limpiar tracking interno
         if cam_id in active_streams and client_id in active_streams[cam_id]:
             del active_streams[cam_id][client_id]
 
@@ -175,7 +230,7 @@ def stream_video(cam_id, client_id, stream_control):
 def handle_stop_camera_feed(data):
     """
     Evento: stop_camera_feed
-    Detiene el streaming de video de una cámara
+    Detiene el streaming de video de una cámara y libera recursos
     """
     try:
         cam_id = data.get('cam_id')
@@ -192,7 +247,11 @@ def handle_stop_camera_feed(data):
         from flask import request
         client_id = request.sid
 
-        # Detener streaming
+        # ⭐ NUEVO: Liberar recursos del optimizador
+        optimizer = get_stream_optimizer()
+        optimizer.stop_stream(cam_id, client_id)
+
+        # Detener streaming interno
         if cam_id in active_streams and client_id in active_streams[cam_id]:
             active_streams[cam_id][client_id]['stop'] = True
 
@@ -203,7 +262,7 @@ def handle_stop_camera_feed(data):
             'datetime': datetime.utcnow().isoformat() + 'Z'
         })
 
-        print(f"✅ Streaming detenido manualmente para cámara {cam_id}")
+        print(f"✅ Streaming detenido manualmente para cámara {cam_id} - Cliente {client_id}")
 
     except Exception as e:
         print(f"❌ Error en stop_camera_feed: {str(e)}")
@@ -217,16 +276,58 @@ def handle_stop_camera_feed(data):
 @socketio.on('disconnect')
 def handle_disconnect():
     """
-    Maneja desconexión de cliente - limpia streams activos
+    Maneja desconexión de cliente - limpia streams activos y libera recursos
     """
     from flask import request
     client_id = request.sid
 
+    # ⭐ NUEVO: Liberar todos los recursos del optimizador para este cliente
+    optimizer = get_stream_optimizer()
+
     # Detener todos los streams de este cliente
     for cam_id in list(active_streams.keys()):
         if client_id in active_streams[cam_id]:
+            # Marcar para detener
             active_streams[cam_id][client_id]['stop'] = True
+
+            # ⭐ Liberar en optimizador
+            optimizer.stop_stream(cam_id, client_id)
+
             print(f"🔌 Cliente {client_id} desconectado - Stream de cámara {cam_id} detenido")
+
+
+# ⭐ NUEVO: Endpoint de status del optimizador
+@socketio.on('get_stream_status')
+def handle_get_stream_status(data):
+    """
+    Evento: get_stream_status
+    Retorna estado actual de los streams activos
+    """
+    try:
+        # Verificar autenticación
+        token = data.get('token')
+        if not verify_token(token):
+            emit('get_stream_status_response', {
+                'error': 'Token inválido o expirado',
+                'datetime': datetime.utcnow().isoformat() + 'Z'
+            })
+            return
+
+        optimizer = get_stream_optimizer()
+        status = optimizer.get_status()
+
+        emit('get_stream_status_response', {
+            'success': True,
+            'status': status,
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
+
+    except Exception as e:
+        print(f"❌ Error en get_stream_status: {str(e)}")
+        emit('get_stream_status_response', {
+            'error': 'Error al obtener status de streams',
+            'datetime': datetime.utcnow().isoformat() + 'Z'
+        })
 
 
 # ============================================================

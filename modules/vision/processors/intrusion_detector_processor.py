@@ -9,21 +9,18 @@ from ultralytics import YOLO
 import numpy as np
 import torch
 
+
 class IntrusionDetectorProcessor(BaseProcessor):
     """
-    Detector INFALIBLE + CALIDAD MEJORADA
+    Detector OPTIMIZADO para Orin Nano 8GB
 
-    🛡️ INFALIBLE:
-    ✅ Try-catch exhaustivo en todas las operaciones
-    ✅ Fallback si YOLO falla
-    ✅ Validación de datos antes de usar
-    ✅ Manejo robusto de memoria
-
-    🎨 CALIDAD MEJORADA:
-    ✅ Contrast enhancement
-    ✅ Boxes con gradiente
-    ✅ Labels más grandes y legibles
-    ✅ Zona con efecto glow
+    🚀 OPTIMIZACIONES:
+    ✅ GPU Manager con PRIORIDAD MÁXIMA (100)
+    ✅ Frame skipping adaptativo (GPU: 5, CPU: 7)
+    ✅ Warmup mínimo (256x256) + limpieza agresiva
+    ✅ Resize adaptativo según device (GPU: 640x480, CPU: 480x360)
+    ✅ YOLOv8n (más ligero que yolo11s)
+    ✅ Max detections adaptativo (GPU: 10, CPU: 5)
     """
 
     PROCESSOR_ID = 2
@@ -34,12 +31,32 @@ class IntrusionDetectorProcessor(BaseProcessor):
         super().__init__(cam_id)
 
         self.csv_enabled = False
-        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        self.use_half = torch.cuda.is_available()
+
+        # ⭐ NUEVO: GPU Manager con PRIORIDAD MÁXIMA
+        from modules.vision.gpu_manager import get_gpu_manager
+
+        gpu_mgr = get_gpu_manager()
+        processor_id = self.PROCESSOR_ID
+        self.device, self.use_half = gpu_mgr.get_recommended_device(cam_id, processor_id)
+
         self.model = None
         self.model_loaded = False
 
+        # ⭐ Frame skipping adaptativo
+        if self.device == 'cpu':
+            self._detection_interval = 7  # CPU: cada 7 frames
+            print(f"⚙️ [Cam {cam_id}] CPU mode - Frame skip: 7")
+        else:
+            self._detection_interval = 5  # GPU: cada 5 frames
+            print(f"⚡ [Cam {cam_id}] GPU mode - Frame skip: 5")
+
         print(f"🔥 Detector INFALIBLE Cam {cam_id} - Device: {self.device}")
+
+        # Mostrar memoria GPU
+        gpu_info = gpu_mgr.get_gpu_memory_info()
+        if gpu_info:
+            print(
+                f"📊 GPU: {gpu_info['usage_percent']:.1f}% | Slots: {gpu_info['slots_used']}/{gpu_info['slots_max']} | Cams: {gpu_info['assigned_cams']}")
 
         self._init_model()
 
@@ -49,7 +66,6 @@ class IntrusionDetectorProcessor(BaseProcessor):
         self.current_intruders = 0
 
         # Frame skipping
-        self._detection_interval = 5
         self._frame_counter = 0
         self._cached_detections = []
 
@@ -63,12 +79,13 @@ class IntrusionDetectorProcessor(BaseProcessor):
         self._detection_errors = 0
 
     def _init_model(self):
-        """Inicializa YOLO con manejo robusto de errores"""
+        """Inicializa YOLO ULTRA OPTIMIZADO para Orin Nano"""
         max_retries = 3
         retry_count = 0
 
         while retry_count < max_retries and not self.model_loaded:
             try:
+                # ⭐ Preferir YOLOv8n (más ligero)
                 model_path = "models/yolov8n.pt"
 
                 if os.path.exists(model_path):
@@ -81,34 +98,55 @@ class IntrusionDetectorProcessor(BaseProcessor):
                 if self.model is None:
                     raise Exception("Modelo YOLO es None")
 
-                # Config
-                self.model.conf = 0.55
-                self.model.iou = 0.45
+                # Config optimizada
+                self.model.conf = 0.60  # ⭐ Aumentado para menos detecciones
+                self.model.iou = 0.50  # ⭐ NMS más agresivo
 
-                # Warmup
+                # ⭐ Warmup MÍNIMO (crítico para memoria)
                 if self.device == 'cuda:0':
-                    print(f"🔥 Warmup GPU...")
-                    dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-                    self.model(
-                        dummy,
-                        verbose=False,
-                        device=self.device,
-                        half=True,
-                        imgsz=640
-                    )
-                    print(f"✅ GPU ready")
+                    print(f"🔥 Warmup GPU (ultra minimal)...")
+                    try:
+                        # Imagen TINY 256x256 (vs 640x640)
+                        dummy = np.zeros((256, 256, 3), dtype=np.uint8)
+
+                        # Sin half precision en warmup
+                        self.model(dummy, verbose=False, device=self.device, half=False, imgsz=256)
+
+                        # Limpieza agresiva post-warmup
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            torch.cuda.ipc_collect()
+                        import gc
+                        gc.collect()
+
+                        print(f"✅ GPU ready (minimal footprint)")
+                    except Exception as e:
+                        print(f"⚠️ Warmup error: {e}")
 
                 self.model_loaded = True
                 print(f"✅ YOLO cargado correctamente")
+
+                # Limpieza final
+                import gc
+                gc.collect()
+
                 return
 
             except Exception as e:
                 retry_count += 1
                 print(f"❌ Error cargando YOLO (intento {retry_count}/{max_retries}): {e}")
-                time.sleep(2)
+
+                # Limpieza antes de reintentar
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()
+                import gc
+                gc.collect()
+
+                time.sleep(3)
 
         if not self.model_loaded:
-            print(f"⚠️ YOLO no se pudo cargar después de {max_retries} intentos. Modo degradado activado.")
+            print(f"⚠️ YOLO no se pudo cargar. Modo degradado activado.")
             self.model = None
 
     def _define_zone(self, width, height):
@@ -158,8 +196,8 @@ class IntrusionDetectorProcessor(BaseProcessor):
             if should_detect and self.model_loaded:
                 result = self._run_detection(frame, w, h)
             else:
-                 # Maintain previous state if skipping
-                 result = {'intrusion': self.current_intruders > 0, 'count': self.current_intruders}
+                # Mantener estado anterior si saltamos frame
+                result = {'intrusion': self.current_intruders > 0, 'count': self.current_intruders}
 
             return result
 
@@ -169,13 +207,10 @@ class IntrusionDetectorProcessor(BaseProcessor):
 
     def _run_detection(self, original_frame, original_width, original_height):
         """
-        Detección INFALIBLE con fallback
+        Detección INFALIBLE con resize adaptativo
         Retorna estado de intrusión para Sentinel Mode
         """
-        detection_result = {
-            'intrusion': False,
-            'count': 0
-        }
+        detection_result = {'intrusion': False, 'count': 0}
 
         try:
             if self.model is None or not self.model_loaded:
@@ -188,9 +223,13 @@ class IntrusionDetectorProcessor(BaseProcessor):
             if original_width <= 0 or original_height <= 0:
                 return detection_result
 
-            # Frame de detección
-            detection_width = 640
-            detection_height = 480
+            # ⭐ Resize adaptativo según device
+            if self.device == 'cpu':
+                detection_width = 480  # CPU: más pequeño
+                detection_height = 360
+            else:
+                detection_width = 640  # GPU: normal
+                detection_height = 480
 
             try:
                 small_frame = cv2.resize(
@@ -205,16 +244,19 @@ class IntrusionDetectorProcessor(BaseProcessor):
             scale_x = original_width / detection_width
             scale_y = original_height / detection_height
 
+            # ⭐ Max detections según device
+            max_det = 5 if self.device == 'cpu' else 10
+
             # YOLO inference
             try:
                 results = self.model.predict(
                     small_frame,
                     verbose=False,
-                    classes=[0],
+                    classes=[0],  # Solo personas
                     half=self.use_half,
                     device=self.device,
-                    imgsz=640,
-                    max_det=10
+                    imgsz=detection_width,
+                    max_det=max_det
                 )
             except Exception as e:
                 self._detection_errors += 1
@@ -287,10 +329,10 @@ class IntrusionDetectorProcessor(BaseProcessor):
             # Update
             self._cached_detections = detections
             self.current_intruders = intruders_count
-            
+
             detection_result['intrusion'] = (intruders_count > 0)
             detection_result['count'] = intruders_count
-            
+
             return detection_result
 
         except Exception as e:
@@ -346,7 +388,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
 
                     (label_w, label_h), baseline = cv2.getTextSize(
                         label,
-                        cv2.FONT_ITALIC,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
                         font_thickness
                     )
@@ -378,7 +420,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         label,
                         (x1 + 5, y1 - 7),
-                        cv2.FONT_ITALIC,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
                         (0, 0, 0),
                         font_thickness + 1,
@@ -390,7 +432,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         label,
                         (x1 + 4, y1 - 8),
-                        cv2.FONT_ITALIC,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
                         (255, 255, 255),
                         font_thickness,
@@ -410,7 +452,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     # Background de alerta
                     (text_w, text_h), _ = cv2.getTextSize(
                         alert_text,
-                        cv2.FONT_ITALIC,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
                         3
                     )
@@ -418,7 +460,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     # 🔧 POSICIÓN SUPERIOR DERECHA
                     frame_width = frame.shape[1]
                     x_right = frame_width - text_w - 30  # 30px margen derecho
-                    
+
                     # Background rojo semitransparente
                     overlay = frame.copy()
                     cv2.rectangle(
@@ -445,7 +487,7 @@ class IntrusionDetectorProcessor(BaseProcessor):
                         frame,
                         alert_text,
                         (x_right + 12, text_h + 12),
-                        cv2.FONT_ITALIC,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
                         (0, 0, 0),
                         4,
@@ -453,14 +495,11 @@ class IntrusionDetectorProcessor(BaseProcessor):
                     )
 
                     # Texto principal
-
-
-                    # Texto con sombra
                     cv2.putText(
                         frame,
                         alert_text,
                         (x_right + 10, text_h + 10),
-                        cv2.FONT_ITALIC,
+                        cv2.FONT_HERSHEY_SIMPLEX,
                         font_scale,
                         (255, 255, 255),
                         3,
